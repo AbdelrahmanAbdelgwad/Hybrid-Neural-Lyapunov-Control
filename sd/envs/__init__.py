@@ -79,3 +79,15 @@ register(
     entry_point='sd.envs.amazingball.ModeledAmazingBall:ModeledAmazingBall',
     max_episode_steps=500,
 )
+
+register(
+    id='HopperLyapunov-v0',
+    entry_point='sd.envs.hopper.hopper_env:HopperLyapunovEnv',
+    max_episode_steps=1000,
+)
+
+register(
+    id='ModeledHopperLyapunov-v0',
+    entry_point='sd.envs.hopper.modeled_hopper:ModeledHopperEnv',
+    max_episode_steps=1000,
+)
