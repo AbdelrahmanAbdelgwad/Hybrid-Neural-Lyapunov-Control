@@ -116,6 +116,8 @@ def generate_dataset(env: gym.Env):
             elif obs_shape == (3,):
                 # Pendulum: [cos(theta), sin(theta), thetadot]
                 # Upright position = cos(0)=1, sin(0)=0, vel=0
+                # Expand thetadot range so training sees diverse angular velocities
+                obs[2] = obs[2] * 7.0
                 setpoint = np.array([1.0, 0.0, 0.0], dtype=np.float32)
             else:
                 # Generic: zeros (center of state space)
