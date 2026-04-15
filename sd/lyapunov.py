@@ -153,6 +153,14 @@ def ball_pos_distance_dfl(ball_pos1, ball_pos2):
     return p_mean(1.0 - normalized_errors, 0.0)
 
 
+@tf.function
+def generic_closeness_dfl(states, setpoints):
+    """Generic closeness metric for envs where state_dim == setpoint_dim."""
+    errors = tf.abs(states - setpoints)
+    normalized = tf.clip_by_value(errors / 2.0, 0.0, 1.0)
+    return p_mean(1.0 - normalized, 0.0)
+
+
 
 def train(batches, dynamics_model, actor, V, state_shape, args):
     # optimizer=keras.optimizers.Adam(lr=args.lr)
@@ -261,9 +269,14 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
                     transposed_states shape   : (state_dim:8, batch_size, repeat)
                     transposed_setpoints shape: (state_dim:4, batch_size, repeat)
         """
-        close_to_setpoints = ball_pos_distance_dfl(
-            transposed_states[4:8], transposed_setpoints[0:4]
-        )
+        if state_dim == sp_dim:
+            close_to_setpoints = generic_closeness_dfl(
+                transposed_states, transposed_setpoints
+            )
+        else:
+            close_to_setpoints = ball_pos_distance_dfl(
+                transposed_states[4:8], transposed_setpoints[0:4]
+            )
         # as_all = angular_similarity(transposed_states, transposed_setpoints)
         # angular_similarities = angular_similarity(tf.transpose(fxu)[0:2] ,tf.transpose(set_points)[0:2])
         # tf.print(actor.losses)
@@ -289,9 +302,14 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
             0.0,
         )
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
-        non_setpoint_Vx = tf.where(
-            ball_pos_distance_dfl(tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]) > 0.95, 1.0, Vx
-        )
+        if state_dim == sp_dim:
+            non_setpoint_Vx = tf.where(
+                generic_closeness_dfl(tf.transpose(prev_states), tf.transpose(set_points)) > 0.95, 1.0, Vx
+            )
+        else:
+            non_setpoint_Vx = tf.where(
+                ball_pos_distance_dfl(tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]) > 0.95, 1.0, Vx
+            )
         small_actions = p_mean(1.0-tf.abs(actions),0)**0.5
         large_elsewhere = p_mean(
             tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
