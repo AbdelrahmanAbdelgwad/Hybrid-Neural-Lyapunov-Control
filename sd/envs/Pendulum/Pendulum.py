@@ -237,10 +237,11 @@ class PendulumEnv(ModelableEnv):
         fname = path.join(path.dirname(__file__), "assets/clockwise.png")
         img = pygame.image.load(fname)
         if self.last_u is not None:
-            self.last_u = np.squeeze(self.last_u)
+            self.last_u = float(np.squeeze(self.last_u))
+            torque_scale = max(int(scale * np.abs(self.last_u) / 2), 1)
             scale_img = pygame.transform.smoothscale(
                 img,
-                (scale * np.abs(self.last_u) / 2, scale * np.abs(self.last_u) / 2),
+                (torque_scale, torque_scale),
             )
             is_flip = bool(self.last_u > 0)
             scale_img = pygame.transform.flip(scale_img, is_flip, True)
