@@ -116,8 +116,6 @@ def generate_dataset(env: gym.Env):
             elif obs_shape == (3,):
                 # Pendulum: [cos(theta), sin(theta), thetadot]
                 # Upright position = cos(0)=1, sin(0)=0, vel=0
-                # Expand thetadot range so training sees diverse angular velocities
-                obs[2] = obs[2] * 7.0
                 setpoint = np.array([1.0, 0.0, 0.0], dtype=np.float32)
             else:
                 # Generic: zeros (center of state space)
@@ -233,7 +231,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         state_dim: 3: [cos(theta), sin(theta), theta_dot]
 
         """
-        maxRepetitions = int(5+50*percent_completion)
+        maxRepetitions = int(5+10*percent_completion)
         # breakpoint()
         # maxRepetitions = 5 
         # repetitions = tf.random.uniform(shape=[], minval=10, maxval=maxRepetitions+1, dtype=tf.dtypes.int32)
@@ -262,7 +260,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         else:
             zero_states = tf.concat([prev_states[:, :set_points_dim], set_points], axis=1)
         zero = p_mean(
-            (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -5.0
+            (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -1.0
         )
 
         # for condition: V shall decrease along time (i.e. along the update steps)
@@ -313,7 +311,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                 diff,
                 clipped=True,
             ),
-            -5.0,
+            0.0,
         )
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
@@ -330,7 +328,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
             normalized_actions = tf.abs(actions)
         small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
         large_elsewhere = p_mean(
-            tf.minimum(non_setpoint_Vx * 2, 1.0), -5.0
+            tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
         )  # making sure non setpoints Vx > 0.1
 
         dfl = Constraints(
