@@ -10,6 +10,8 @@ from keras import layers
 import matplotlib
 from sd.envs.amazingball.constant import constants
 import sd.envs.amazingball.BallKerasModel # for serializable diffeq
+from sd.envs.Pendulum.PendulumKerasModel import PendulumDifferenceEq  # for serializable diffeq
+from sd.lyapunov import ActionLayer  # for serializable layer
 # matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
