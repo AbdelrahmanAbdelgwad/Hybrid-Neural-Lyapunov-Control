@@ -30,7 +30,7 @@ def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=
     dense = layers.Concatenate()([input_state, input_setpoint])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="relu", kernel_regularizer=keras.regularizers.l2(0.01)
+            size, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     before_sigmoid = layers.Dense(
         1, activation=None, kernel_regularizer=keras.regularizers.l2(0.01)
@@ -81,7 +81,7 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes
     dense = layers.Concatenate()([input_state, input_set_point])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="relu",
+            size, activation="tanh",
             kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     dense3 = layers.Dense(
@@ -260,7 +260,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         else:
             zero_states = tf.concat([prev_states[:, :set_points_dim], set_points], axis=1)
         zero = p_mean(
-            (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -1.0
+            (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -5.0
         )
 
         # for condition: V shall decrease along time (i.e. along the update steps)
@@ -311,7 +311,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                 diff,
                 clipped=True,
             ),
-            0.0,
+            -5.0,
         )
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
@@ -328,7 +328,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
             normalized_actions = tf.abs(actions)
         small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
         large_elsewhere = p_mean(
-            tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
+            tf.minimum(non_setpoint_Vx * 2, 1.0), -5.0
         )  # making sure non setpoints Vx > 0.1
 
         dfl = Constraints(
@@ -338,7 +338,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                 # "close_angles": scale_gradient(p_mean(as_all, 2.0), 1.0),
                 # "close_angles": build_piecewise([(0.0, 0.0), (0.6, 0.01), (0.7, 0.9), (1.0, 1.0)], p_mean(as_all, 2.0)),
                 # "close_setpoints": scale_gradient(close_to_setpoints, 1e2),
-                "small_actions": scale_gradient(small_actions, 1e-3),
+                # "small_actions": scale_gradient(small_actions, 1e-3),
                 "lyapunov": Constraints(
                     0.0,
                     {
@@ -349,8 +349,8 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                         "lyapunov_reg": scale_gradient(tf.minimum(transform(lyapunov_reg, 0.0, 1.0, 0.0, 1.1), 1.0), 1.0),
                     },
                 ),
-                "actor_reg": scale_gradient(p_mean(move_toward_zero(before_tanhs), 0), 1e-4),
-                "V_reg": scale_gradient(p_mean(move_toward_zero(Vx_before_sigmoid), 0), 1.0),
+                # "actor_reg": scale_gradient(p_mean(move_toward_zero(before_tanhs), 0), 1e-4),
+                # "V_reg": scale_gradient(p_mean(move_toward_zero(Vx_before_sigmoid), 0), 1.0),
                 # "actor_reg": tf.minimum(transform(actor_reg, 0.0, 1.0, 0.0, 1.1), 1.0),
             },
         )
