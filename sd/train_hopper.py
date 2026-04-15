@@ -56,8 +56,6 @@ def random_setpoint():
     sp = constants["default_setpoint"].copy()
     # Randomize forward velocity: 0 (stand) to 3.0 (run)
     sp[5] = np.random.uniform(0.0, 3.0)
-    # Slight height variation
-    sp[0] = np.random.uniform(1.1, 1.4)
     return sp.astype(np.float32)
 
 
