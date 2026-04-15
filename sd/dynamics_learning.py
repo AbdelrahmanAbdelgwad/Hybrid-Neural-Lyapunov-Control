@@ -241,7 +241,7 @@ def train_GAN_step(env: ModelableEnv, generator, discriminator, learning_rate):
 
 def show_info(scalar_constraints):
     scalar, constraints = scalar_constraints
-    return f"{scalar:.2e}|{dfl.format_dfl(constraints)}"
+    return f"{scalar:.2e}|{constraints}"
 
 
 def system_identify(env_name: str,
