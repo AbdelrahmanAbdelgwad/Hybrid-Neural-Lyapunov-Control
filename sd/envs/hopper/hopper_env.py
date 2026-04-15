@@ -22,7 +22,7 @@ from gymnasium import spaces
 import numpy as np
 import tensorflow as tf
 from sd.envs.modelable_env import ModelableEnv
-from sd import dfl
+from sd import fpl
 from sd.envs.hopper.constant import constants
 
 
@@ -40,27 +40,39 @@ class HopperLyapunovEnv(ModelableEnv):
         )
 
         max_vel = constants["max_vel"]
-        obs_low = np.array([
-            constants["min_z_pos"],     # z_pos
-            -constants["max_angle"],    # angle_torso
-            -constants["max_joint_angle"],  # thigh
-            -constants["max_joint_angle"],  # leg
-            -constants["max_foot_angle"],   # foot
-            -max_vel, -max_vel,         # x_vel, z_vel
-            -max_vel, -max_vel,         # ang_vel_torso, thigh_vel
-            -max_vel, -max_vel,         # leg_vel, foot_vel
-        ], dtype=np.float32)
+        obs_low = np.array(
+            [
+                constants["min_z_pos"],  # z_pos
+                -constants["max_angle"],  # angle_torso
+                -constants["max_joint_angle"],  # thigh
+                -constants["max_joint_angle"],  # leg
+                -constants["max_foot_angle"],  # foot
+                -max_vel,
+                -max_vel,  # x_vel, z_vel
+                -max_vel,
+                -max_vel,  # ang_vel_torso, thigh_vel
+                -max_vel,
+                -max_vel,  # leg_vel, foot_vel
+            ],
+            dtype=np.float32,
+        )
 
-        obs_high = np.array([
-            constants["max_z_pos"],
-            constants["max_angle"],
-            constants["max_joint_angle"],
-            constants["max_joint_angle"],
-            constants["max_foot_angle"],
-            max_vel, max_vel,
-            max_vel, max_vel,
-            max_vel, max_vel,
-        ], dtype=np.float32)
+        obs_high = np.array(
+            [
+                constants["max_z_pos"],
+                constants["max_angle"],
+                constants["max_joint_angle"],
+                constants["max_joint_angle"],
+                constants["max_foot_angle"],
+                max_vel,
+                max_vel,
+                max_vel,
+                max_vel,
+                max_vel,
+                max_vel,
+            ],
+            dtype=np.float32,
+        )
 
         self.observation_space = spaces.Box(
             low=obs_low, high=obs_high, dtype=np.float32
@@ -68,9 +80,7 @@ class HopperLyapunovEnv(ModelableEnv):
         self.action_space = self.base_env.action_space
 
         # Setpoint = full state (for stabilization, target is a full state config)
-        self.setpoint_space = spaces.Box(
-            low=obs_low, high=obs_high, dtype=np.float32
-        )
+        self.setpoint_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
     def _clip_obs(self, obs):
         return np.clip(
@@ -96,9 +106,9 @@ class HopperLyapunovEnv(ModelableEnv):
 
     @staticmethod
     @tf.function
-    def closeness_dfl(obs1, obs2):
+    def closeness_fpl(obs1, obs2):
         abs_diff = tf.abs(obs1 - obs2)
-        return 1.0 / dfl.p_mean((1.0 + abs_diff), 1.0)
+        return 1.0 / fpl.p_mean((1.0 + abs_diff), 1.0)
 
 
 if __name__ == "__main__":

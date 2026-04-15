@@ -364,7 +364,7 @@ def train(
         else:
             normalized_actions = tf.abs(actions)
         small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
-        positive_elsewhere = p_mean(
+        large_elsewhere = p_mean(
             tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
         )  # making sure non setpoints Vx > 0.1
 
@@ -381,7 +381,7 @@ def train(
                     {
                         "pop": scale_gradient(proof_of_performance, 1.0),
                         # "diff": p_mean((diff/2.0+0.5)**2.0, 0)
-                        "positive": positive_elsewhere,
+                        "large": large_elsewhere,
                         "zero": zero,
                         "lyapunov_reg": scale_gradient(
                             tf.minimum(
