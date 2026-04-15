@@ -1,0 +1,407 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{algorithm, algorithmic}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{bm}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\pmean}[2]{M_{#1}\!\left(#2\right)}
+\newcommand{\x}{\bm{x}}
+\newcommand{\xstar}{\bm{x}^*}
+\newcommand{\uu}{\bm{u}}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{remark}{Remark}
+
+\title{Hybrid Neural Lyapunov Control:\\Problem Formulation and Method}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a framework for jointly learning a neural Lyapunov function and a
+stabilizing controller for continuous-control systems.  The method first learns
+a neural dynamics model from environment rollouts, then co-trains a Lyapunov
+certificate $V$ and a control policy $\pi$ by optimizing a composite loss
+expressed in \emph{Differentiable Fuzzy Logic} (DFL).  The controller is
+parameterized by a setpoint, enabling it to stabilize the system to arbitrary
+target states---including locomotion targets with nonzero forward velocity.
+We demonstrate the approach on the MuJoCo Hopper environment.
+\end{abstract}
+
+% ===================================================================
+\section{Problem Statement}
+% ===================================================================
+
+Consider a discrete-time nonlinear system
+\begin{equation}\label{eq:dynamics}
+    \x_{t+1} = f(\x_t, \uu_t),
+    \qquad \x_t \in \mathcal{X} \subset \R^n,\;
+           \uu_t \in \mathcal{U} \subset \R^m,
+\end{equation}
+where $\x_t$ is the state and $\uu_t$ is the control input.
+Given a desired setpoint $\xstar \in \mathcal{X}$, we seek:
+
+\begin{enumerate}
+    \item A \textbf{controller} $\pi_\theta : \mathcal{X} \times \mathcal{X} \to \mathcal{U}$
+          parameterized by $\theta$, mapping $(\x, \xstar)$ to an action
+          $\uu = \pi_\theta(\x, \xstar)$.
+
+    \item A \textbf{Lyapunov function} $V_\phi : \mathcal{X} \times \mathcal{X} \to [0,1]$
+          parameterized by $\phi$, certifying stability of the closed-loop
+          system $\x_{t+1} = f(\x_t, \pi_\theta(\x_t, \xstar))$.
+\end{enumerate}
+
+\noindent The Lyapunov conditions that must be satisfied are:
+\begin{align}
+    V(\xstar, \xstar) &= 0, \label{eq:lyap_zero}\\
+    V(\x, \xstar)     &> 0 \quad \forall\, \x \neq \xstar, \label{eq:lyap_pos}\\
+    V(f(\x, \pi(\x, \xstar)),\; \xstar) &< V(\x, \xstar) \quad \forall\, \x \neq \xstar. \label{eq:lyap_decrease}
+\end{align}
+
+% ===================================================================
+\section{Three-Stage Pipeline}
+% ===================================================================
+
+\subsection{Stage 1: Dynamics Learning}
+
+The true dynamics $f$ is unknown. We learn a neural surrogate
+$\hat{f}_\psi : \mathcal{X} \times \mathcal{U} \times \mathcal{Z} \to \mathcal{X}$
+from transition tuples $(\x_t, \uu_t, \x_{t+1})$ collected under a random
+policy.  The optional latent input $\bm{z} \sim \mathcal{N}(0, I)$ with
+$\bm{z} \in \R^d$ allows modeling stochastic dynamics.
+
+\paragraph{Architecture.}
+States and actions are normalized to $[0,1]$ via the observation and action
+space bounds, concatenated with the latent vector, and passed through an MLP
+with SELU activations:
+\[
+    \hat{f}_\psi(\x, \uu, \bm{z})
+    = \bm{l} + \sigma\!\bigl(\text{MLP}([\bar{\x},\, \bar{\uu},\, \bm{z}])\bigr)
+      \odot (\bm{h} - \bm{l}),
+\]
+where $\bm{l}, \bm{h}$ are the observation space bounds and $\sigma$ is the
+element-wise sigmoid.  The output is thus constrained to the valid state range.
+
+\paragraph{Loss.}
+Training minimizes a closeness metric between predicted and true next states
+expressed in DFL form (Section~\ref{sec:dfl}):
+\[
+    \mathcal{L}_{\text{dyn}} = 1 - \text{closeness}(\hat{f}_\psi(\x_t, \uu_t, \bm{z}),\; \x_{t+1}).
+\]
+
+\subsection{Stage 2: Lyapunov Controller Training}
+
+Given the frozen dynamics model $\hat{f}_\psi$, we jointly optimize the
+controller $\pi_\theta$ and Lyapunov function $V_\phi$ by minimizing
+a DFL constraint tree (Section~\ref{sec:loss_tree}).
+
+\paragraph{Network Architectures.}
+
+The \textbf{Lyapunov network} $V_\phi$ takes the concatenation $[\x, \xstar]$
+and outputs a scalar in $[0,1]$:
+\[
+    V_\phi(\x, \xstar) = \sigma\!\bigl(W_3 \tanh(W_2 \tanh(W_1 [\x, \xstar] + b_1) + b_2) + b_3\bigr),
+\]
+with two hidden layers of 64 units each and $L^2$ regularization ($\lambda = 0.01$)
+on all weights.
+
+The \textbf{actor network} $\pi_\theta$ has the same hidden structure but ends
+with a sigmoid followed by an affine rescaling to $[\uu_{\min}, \uu_{\max}]$:
+\[
+    \pi_\theta(\x, \xstar) = \uu_{\min} + \sigma\!\bigl(\text{MLP}([\x, \xstar])\bigr)
+      \odot (\uu_{\max} - \uu_{\min}).
+\]
+
+\subsection{Stage 3: Evaluation}
+
+The trained controller is deployed in the true MuJoCo environment (not the
+learned dynamics) and evaluated on total reward and visual inspection.
+
+% ===================================================================
+\section{Differentiable Fuzzy Logic (DFL)}\label{sec:dfl}
+% ===================================================================
+
+DFL provides a framework for composing multiple objectives into a single
+differentiable scalar loss using generalized means.
+
+\subsection{Generalized Mean ($p$-mean)}
+
+\begin{definition}[Generalized Mean]
+For a collection of non-negative values $\{c_1, \dots, c_k\}$ and parameter
+$p \in \R \setminus \{0\}$:
+\begin{equation}\label{eq:pmean}
+    \pmean{p}{c_1, \dots, c_k}
+    = \left(\frac{1}{k} \sum_{i=1}^{k} (c_i + \epsilon)^p\right)^{1/p} - \epsilon,
+\end{equation}
+where $\epsilon > 0$ is a small slack preventing collapse when $p < 0$.
+\end{definition}
+
+Key special cases:
+\begin{center}
+\begin{tabular}{cl}
+    \toprule
+    $p$ & Behavior \\
+    \midrule
+    $p \to -\infty$ & Minimum (most pessimistic) \\
+    $p = -1$        & Harmonic mean \\
+    $p \to 0$       & Geometric mean \\
+    $p = 1$         & Arithmetic mean \\
+    $p = 2$         & Quadratic mean (RMS) \\
+    $p \to +\infty$ & Maximum (most optimistic) \\
+    \bottomrule
+\end{tabular}
+\end{center}
+
+Using $p < 0$ enforces \emph{all} constraints simultaneously (AND-like),
+while $p > 0$ is more forgiving (OR-like).
+
+\subsection{Constraint Trees}
+
+A \texttt{Constraints} node aggregates named sub-constraints using a $p$-mean:
+\begin{equation}
+    \text{scalarize}\bigl(\text{Constraints}(p, \{c_i\})\bigr)
+    = \pmean{p}{\text{scalarize}(c_1), \dots, \text{scalarize}(c_k)}.
+\end{equation}
+Leaf constraints are scalar tensors in $[0,1]$ where $1$ = fully satisfied.
+The tree is recursively scalarized to produce a single loss:
+\[
+    \mathcal{L} = 1 - \text{scalarize}(\text{root}).
+\]
+
+\subsection{Auxiliary DFL Primitives}
+
+\paragraph{Piecewise Transform.}
+Maps a value through a piecewise-linear function defined by breakpoints
+$\{(x_i, y_i)\}$:
+\[
+    \text{piecewise}(v) = \begin{cases}
+        \text{lerp}(v;\, x_0, x_1, y_0, y_1) & \text{if } v < x_1,\\
+        \text{lerp}(v;\, x_1, x_2, y_1, y_2) & \text{if } v < x_2,\\
+        \vdots \\
+        \text{lerp}(v;\, x_{n-1}, x_n, y_{n-1}, y_n) & \text{otherwise},
+    \end{cases}
+\]
+where $\text{lerp}(v; a, b, c, d) = c + \frac{v - a}{b - a}(d - c)$.
+
+\paragraph{Gradient Scaling.}
+\texttt{scale\_gradient}$(x, s)$ returns $x$ in the forward pass but
+multiplies the gradient by $s$ in the backward pass.  This controls relative
+learning rates of different constraint branches without changing their
+forward-pass contribution.
+
+\paragraph{Move Toward Zero.}
+An activity regularizer for pre-activation values:
+\[
+    \text{forward: } \sigma(-|x| + 5), \qquad
+    \text{gradient: } -\frac{\partial \mathcal{L}}{\partial y} \cdot x^3 \cdot 5.
+\]
+The cubic gradient provides a soft pressure toward zero for large activations
+while leaving small activations mostly unaffected.
+
+% ===================================================================
+\section{Hopper Constraint Tree}\label{sec:loss_tree}
+% ===================================================================
+
+For the Hopper environment ($n = 11$ state dimensions, $m = 3$ action
+dimensions), the full loss is a nested DFL constraint tree.
+
+\subsection{Multi-Step Rollout}
+
+At each training step, the dynamics model is unrolled for $T$ steps
+(curriculum-scheduled: $T_{\max} = 5 + 50 \cdot \frac{\text{epoch}}{\text{total epochs}}$)
+to produce a trajectory
+$\x_0, \x_1, \dots, \x_T$ under the current policy:
+\[
+    \x_{t+1} = \hat{f}_\psi\bigl(\x_t,\; \pi_\theta(\x_t, \xstar),\; \bm{z}_t\bigr),
+    \qquad \bm{z}_t \sim \mathcal{N}(0, I).
+\]
+
+\subsection{Hopper Closeness Metric}
+
+The closeness between a state $\x$ and setpoint $\xstar$ is computed
+per-dimension with different ranges for positions vs.\ velocities:
+\begin{equation}
+    e_i = \frac{|x_i - x^*_i|}{r_i}, \quad
+    w_i = \begin{cases}
+        \text{clip}(e_i, 0, 1) & i \in \{0,\dots,4\} \text{ (positions)},\\
+        \text{clip}(e_i, 0, 1)^2 & i \in \{5,\dots,10\} \text{ (velocities)},
+    \end{cases}
+\end{equation}
+where $\bm{r} = [2.5,\, 2.0,\, 3.0,\, 3.0,\, 3.0,\, 20,\, 20,\, 20,\, 20,\, 20,\, 20]$
+are the normalization ranges (positions have tighter ranges than velocities).
+The squaring of velocity errors de-emphasizes small velocity deviations.
+The final closeness score is:
+\[
+    \text{closeness}(\x, \xstar) = \pmean{0}{1 - w_0, \dots, 1 - w_{10}}.
+\]
+
+\subsection{Constraint Tree Structure}
+
+The root constraint uses $p = 0$ (geometric mean), enforcing all branches:
+\[
+    \mathcal{C}_{\text{root}} = \text{Constraints}\!\left(0,\;
+    \left\{
+    \begin{aligned}
+        &\texttt{close\_setpoints},\;
+         \texttt{small\_actions},\;
+         \texttt{lyapunov},\\
+        &\texttt{actor\_reg},\;
+         \texttt{V\_reg}
+    \end{aligned}
+    \right\}
+    \right)
+\]
+
+\paragraph{close\_setpoints.}
+Trajectory states should approach the setpoint:
+\[
+    c_{\text{close}} = \text{closeness}(\x_{1:T}, \xstar),
+    \quad \text{gradient scaled by } 10^2.
+\]
+
+\paragraph{small\_actions.}
+Penalizes large control effort:
+\[
+    c_{\text{actions}} = \left(\pmean{0}{1 - |\uu_{1:T}|}\right)^{0.5},
+    \quad \text{gradient scaled by } 10^{-3}.
+\]
+
+\paragraph{lyapunov.}
+A sub-tree with $p = 0$ containing four Lyapunov-specific constraints:
+
+\begin{itemize}
+    \item \textbf{pop} (proof of performance): The Lyapunov decrease condition.
+    Define $\delta_t = V(\x_0, \xstar) - V(\x_t, \xstar)$ (should be positive).
+    The target decrease is $\ell_t = \min\!\bigl(\tfrac{10}{100} \cdot t,\; V(\x_0, \xstar)\bigr)$.
+    Then:
+    \[
+        c_{\text{pop}} = \pmean{0}{\text{piecewise}\!\left(
+        \delta_t;\;
+        \begin{bmatrix}(-1, 0)\\(-0.1, 10^{-5})\\(0, 0.01)\\(\ell_t, 0.9)\\(1, 1)\end{bmatrix}
+        \right)}.
+    \]
+    The piecewise mapping heavily penalizes $\delta_t < 0$ (Lyapunov \emph{increase})
+    while rewarding $\delta_t \geq \ell_t$.
+
+    \item \textbf{large}: $V$ must be nonzero away from the setpoint:
+    \[
+        c_{\text{large}} = \pmean{-2}{\min(2\,V_{\text{non-sp}}, 1)},
+    \]
+    where $V_{\text{non-sp}}$ replaces $V(\x, \xstar)$ with $1$ when
+    $\text{closeness}(\x, \xstar) > 0.95$ (already at setpoint).
+
+    \item \textbf{zero}: $V$ at the setpoint should be zero:
+    \[
+        c_{\text{zero}} = \pmean{-1}{1 - V(\xstar, \xstar)^{0.5}}.
+    \]
+
+    \item \textbf{lyapunov\_reg}: $L^2$ weight regularization:
+    \[
+        c_{\text{Vreg}} = \min\!\bigl(\text{lerp}(1 - \tanh(\bar{r}_V),\; 0, 1, 0, 1.1),\; 1\bigr),
+    \]
+    where $\bar{r}_V$ is the mean of the $V$ network's kernel regularization losses.
+\end{itemize}
+
+\paragraph{actor\_reg.}
+Regularizes pre-sigmoid activations of the actor toward zero:
+\[
+    c_{\text{act\_reg}} = \pmean{0}{\text{move\_toward\_zero}(\bm{a}_{\text{pre}})},
+    \quad \text{gradient scaled by } 10^{-4}.
+\]
+
+\paragraph{V\_reg.}
+Regularizes pre-sigmoid activations of the Lyapunov network:
+\[
+    c_{\text{V\_reg}} = \pmean{0}{\text{move\_toward\_zero}(V_{\text{pre}})},
+    \quad \text{gradient scaled by } 1.
+\]
+
+\subsection{Final Loss}
+
+\[
+    \mathcal{L}(\theta, \phi) = 1 - \text{scalarize}(\mathcal{C}_{\text{root}}).
+\]
+
+Optimization is performed with Adam ($\eta = 10^{-3}$) jointly over
+$\theta$ (actor) and $\phi$ (Lyapunov) parameters.
+
+% ===================================================================
+\section{Setpoint-Parameterized Locomotion}
+% ===================================================================
+
+A key feature is that both $V_\phi$ and $\pi_\theta$ take the setpoint
+$\xstar$ as an explicit input.  During training, setpoints are randomized:
+\begin{align}
+    x^*_{\text{height}} &\sim \mathcal{U}(1.1, 1.4), \\
+    x^*_{\text{fwd\_vel}} &\sim \mathcal{U}(0.0, 3.0), \\
+    x^*_i &= 0 \quad \text{for all other dimensions}.
+\end{align}
+
+This forces the controller to generalize across target velocities: at test
+time, setting $x^*_{\text{fwd\_vel}} = 2.0$ commands the hopper to run forward,
+while $x^*_{\text{fwd\_vel}} = 0$ commands it to balance in place.
+
+\begin{remark}
+Locomotion is fundamentally a limit-cycle behavior, not convergence to a
+fixed equilibrium.  The Lyapunov framework guarantees convergence to a point.
+For locomotion, the controller must discover periodic joint motions whose
+\emph{average} velocity matches the target.  The closeness metric
+de-emphasizes velocity errors (via squaring), which provides tolerance for
+the oscillatory velocity profile inherent in hopping gaits.
+\end{remark}
+
+% ===================================================================
+\section{Hopper Environment}
+% ===================================================================
+
+The Hopper is a planar one-legged robot from MuJoCo with:
+\begin{itemize}
+    \item \textbf{State} ($n = 11$): $[\,z,\; \theta_{\text{torso}},\;
+          \theta_{\text{thigh}},\; \theta_{\text{leg}},\; \theta_{\text{foot}},\;
+          \dot{x},\; \dot{z},\; \dot{\theta}_{\text{torso}},\;
+          \dot{\theta}_{\text{thigh}},\; \dot{\theta}_{\text{leg}},\;
+          \dot{\theta}_{\text{foot}}\,]$.
+
+    \item \textbf{Action} ($m = 3$): joint torques
+          $[\tau_{\text{thigh}},\; \tau_{\text{leg}},\; \tau_{\text{foot}}]$,
+          each in $[-1, 1]$.
+
+    \item \textbf{Default setpoint}: $\xstar = [1.25,\; 0,\; 0,\; 0,\; 0,\;
+          0,\; 0,\; 0,\; 0,\; 0,\; 0]$ (standing upright, stationary).
+\end{itemize}
+
+% ===================================================================
+\section{Training Algorithm Summary}
+% ===================================================================
+
+\begin{algorithm}[H]
+\caption{Hybrid Neural Lyapunov Control}
+\begin{algorithmic}[1]
+\STATE \textbf{Stage 1:} Collect transitions $\{(\x_t, \uu_t, \x_{t+1})\}$
+       under random policy
+\STATE Train dynamics model $\hat{f}_\psi$ to minimize
+       $1 - \text{closeness}(\hat{f}_\psi(\x, \uu, \bm{z}), \x')$
+\STATE \textbf{Stage 2:} Initialize $V_\phi$ and $\pi_\theta$
+\FOR{epoch $= 1$ \TO $E$}
+    \FOR{each batch $\{(\x_i, \xstar_i)\}$}
+        \STATE Sample rollout length $T \sim \mathcal{U}(1, T_{\max}(\text{epoch}))$
+        \STATE Unroll $\x_{i,0}, \dots, \x_{i,T}$ using $\hat{f}_\psi$ and $\pi_\theta$
+        \STATE Evaluate DFL constraint tree $\mathcal{C}$
+        \STATE $\mathcal{L} \leftarrow 1 - \text{scalarize}(\mathcal{C})$
+        \STATE Update $\theta, \phi$ via Adam on $\nabla_{\theta,\phi} \mathcal{L}$
+    \ENDFOR
+\ENDFOR
+\STATE \textbf{Stage 3:} Deploy $\pi_\theta$ in true environment
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}
