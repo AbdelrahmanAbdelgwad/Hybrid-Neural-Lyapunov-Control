@@ -206,7 +206,7 @@ def train_direct_step(env: ModelableEnv, generator, learning_rate):
 
         return generator_scalar, generator_dfl
 
-    def train_and_show(batch):
+    def train_and_show(batch, epoch=None):
         return show_info(gradient_step(batch))
 
     return train_and_show
@@ -232,7 +232,7 @@ def train_GAN_step(env: ModelableEnv, generator, discriminator, learning_rate):
 
         return (generator_scalar, generator_dfl), (discriminator_scalar, discriminator_dfl)
 
-    def train_and_show(batch):
+    def train_and_show(batch, epoch=None):
         generator_info, discriminator_info = gradient_step(batch)
         return f"G: [{show_info(generator_info)}], D: [{show_info(discriminator_info)}]"
 
