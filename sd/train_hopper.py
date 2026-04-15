@@ -347,14 +347,14 @@ if __name__ == "__main__":
         help="Path to a dynamics model checkpoint (model.keras). "
         "Defaults to the most recently trained model.",
     )
-    parser.add_argument("--num_batches", type=int, default=200)
+    parser.add_argument("--num_batches", type=int, default=256)
     parser.add_argument(
         "--save_freq",
         type=int,
-        default=15,
+        default=10,
         help="Save controller checkpoints every N seconds",
     )
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument(
