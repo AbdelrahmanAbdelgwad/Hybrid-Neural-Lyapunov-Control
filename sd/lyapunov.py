@@ -100,24 +100,27 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes
 
 
 def generate_dataset(env: gym.Env):
+    obs_shape = env.observation_space.shape
+    try:
+        sp_shape = env.setpoint_space.shape
+    except AttributeError:
+        sp_shape = obs_shape
+
     def gen_sample():
-        """Generates a sample from the environment but assumes that the environment is a pendulum"""
         while True:
             obs, _ = env.reset()
-            obs = np.array(obs)
-            # obs[0:5] = 0.0
-            ## PENDULUM START
-            # obs[2] = obs[2]*7.0
-            # # angle = np.where(np.abs(np.cos(init_state)) < 0.7, 0.0, init_state) # randomize setpoints
-            # # angle = np.random.uniform(-np.pi/7.0, np.pi/7.0) + np.random.randint(2)*np.pi
-            # # yield {"state":obs, "setpoint": [np.cos(angle), np.sin(angle), 0.0]}
-            # yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]}
-            # # yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]} if np.random.randint(2) == 1 else {"state": obs, "setpoint":[-1.0,0.0,0.0]}
-            ## PENDULUM END
-
-            ## AMAZINGBALL START
-            yield {"state": np.array(obs), "setpoint": np.array([0.0, 0.0, 0.0, 0.0])}
-            ## AMAZINGBALL END
+            obs = np.array(obs, dtype=np.float32)
+            if sp_shape == (4,) and obs_shape == (8,):
+                # AmazingBall: setpoint is ball position/velocity (4D)
+                setpoint = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            elif obs_shape == (3,):
+                # Pendulum: [cos(theta), sin(theta), thetadot]
+                # Upright position = cos(0)=1, sin(0)=0, vel=0
+                setpoint = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+            else:
+                # Generic: zeros (center of state space)
+                setpoint = np.zeros(sp_shape, dtype=np.float32)
+            yield {"state": obs, "setpoint": setpoint}
 
     return gen_sample
 
@@ -154,15 +157,24 @@ def ball_pos_distance_dfl(ball_pos1, ball_pos2):
 
 
 @tf.function
-def generic_closeness_dfl(states, setpoints):
-    """Generic closeness metric for envs where state_dim == setpoint_dim."""
+def generic_closeness_dfl(states, setpoints, ranges):
+    """Generic closeness metric for envs where state_dim == setpoint_dim.
+
+    Args:
+        states, setpoints: tensors with shape (state_dim, ...) (transposed layout)
+        ranges: (state_dim,) tensor of per-dimension normalization ranges
+    """
     errors = tf.abs(states - setpoints)
-    normalized = tf.clip_by_value(errors / 2.0, 0.0, 1.0)
+    # Reshape ranges for broadcasting: (state_dim,) -> (state_dim, 1, ...)
+    extra_dims = len(states.shape) - 1
+    ranges_shape = tf.concat([tf.shape(ranges), tf.ones(extra_dims, dtype=tf.int32)], 0)
+    ranges_bc = tf.reshape(ranges, ranges_shape)
+    normalized = tf.clip_by_value(errors / ranges_bc, 0.0, 1.0)
     return p_mean(1.0 - normalized, 0.0)
 
 
 
-def train(batches, dynamics_model, actor, V, state_shape, args):
+def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None):
     # optimizer=keras.optimizers.Adam(lr=args.lr)
     optimizer = keras.optimizers.Adam(learning_rate=args.lr)
     actor_and_before_tanh = tf.keras.Model(
@@ -271,7 +283,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
         """
         if state_dim == sp_dim:
             close_to_setpoints = generic_closeness_dfl(
-                transposed_states, transposed_setpoints
+                transposed_states, transposed_setpoints, obs_range
             )
         else:
             close_to_setpoints = ball_pos_distance_dfl(
@@ -304,7 +316,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
             non_setpoint_Vx = tf.where(
-                generic_closeness_dfl(tf.transpose(prev_states), tf.transpose(set_points)) > 0.95, 1.0, Vx
+                generic_closeness_dfl(tf.transpose(prev_states), tf.transpose(set_points), obs_range) > 0.95, 1.0, Vx
             )
         else:
             non_setpoint_Vx = tf.where(
@@ -444,4 +456,7 @@ if __name__ == "__main__":
         generate_dataset(env), output_signature=dataset_spec
     )
     batched_dataset = dataset.batch(args.batch_size).take(args.num_batches).cache()
-    train(batched_dataset, dynamics_model, actor, lyapunov_model, state_shape, args)
+    obs_range = tf.constant(
+        env.observation_space.high - env.observation_space.low, dtype=tf.float32
+    )
+    train(batched_dataset, dynamics_model, actor, lyapunov_model, state_shape, args, obs_range=obs_range)
