@@ -17,6 +17,7 @@ import gymnasium as gym
 import keras
 from pathlib import Path
 import sd.envs  # register environments
+from sd.lyapunov import ActionLayer  # register custom Keras layer for model loading
 from sd.envs.hopper.constant import constants
 
 
