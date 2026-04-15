@@ -169,12 +169,12 @@ def generic_closeness_dfl(states, setpoints, ranges):
     extra_dims = len(states.shape) - 1
     ranges_shape = tf.concat([tf.shape(ranges), tf.ones(extra_dims, dtype=tf.int32)], 0)
     ranges_bc = tf.reshape(ranges, ranges_shape)
-    normalized = tf.clip_by_value(errors / ranges_bc, 0.0, 1.0)
+    normalized = tf.clip_by_value(errors / ranges_bc, 0.0, 0.99)
     return p_mean(1.0 - normalized, 0.0)
 
 
 
-def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None):
+def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, action_high=None):
     # optimizer=keras.optimizers.Adam(lr=args.lr)
     optimizer = keras.optimizers.Adam(learning_rate=args.lr)
     actor_and_before_tanh = tf.keras.Model(
@@ -322,7 +322,11 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None):
             non_setpoint_Vx = tf.where(
                 ball_pos_distance_dfl(tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]) > 0.95, 1.0, Vx
             )
-        small_actions = p_mean(1.0-tf.abs(actions),0)**0.5
+        if action_high is not None:
+            normalized_actions = tf.abs(actions) / action_high
+        else:
+            normalized_actions = tf.abs(actions)
+        small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
         large_elsewhere = p_mean(
             tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
         )  # making sure non setpoints Vx > 0.1
@@ -459,4 +463,6 @@ if __name__ == "__main__":
     obs_range = tf.constant(
         env.observation_space.high - env.observation_space.low, dtype=tf.float32
     )
-    train(batched_dataset, dynamics_model, actor, lyapunov_model, state_shape, args, obs_range=obs_range)
+    action_high = tf.constant(env.action_space.high, dtype=tf.float32)
+    train(batched_dataset, dynamics_model, actor, lyapunov_model, state_shape, args,
+          obs_range=obs_range, action_high=action_high)
