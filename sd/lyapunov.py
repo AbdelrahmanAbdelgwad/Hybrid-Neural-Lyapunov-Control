@@ -17,24 +17,23 @@ from . import utils
 from sd.envs.amazingball.constant import constants
 
 
-def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None):
+def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=None):
+    if hidden_sizes is None:
+        hidden_sizes = [64, 64]
     input_state = keras.Input(shape=state_shape)
-    # input_setpoint = keras.Input(shape=state_shape)
     input_setpoint = (
         keras.Input(shape=input_setpoint_shape)
         if input_setpoint_shape
         else keras.Input(shape=state_shape)
     )
-    inputs = layers.Concatenate()([input_state, input_setpoint])
-    dense1 = layers.Dense(
-        64, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
-    )(inputs)
-    dense2 = layers.Dense(
-        64, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
-    )(dense1)
+    dense = layers.Concatenate()([input_state, input_setpoint])
+    for size in hidden_sizes:
+        dense = layers.Dense(
+            size, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
+        )(dense)
     before_sigmoid = layers.Dense(
         1, activation=None, kernel_regularizer=keras.regularizers.l2(0.01)
-    )(dense2)
+    )(dense)
     outputs = layers.Activation("sigmoid")(before_sigmoid)
 
     # outputs = layers.Lambda(lambda x: tf.clip_by_value(x+0.5, 0.0, 1.0))(activation)
@@ -67,7 +66,9 @@ class ActionLayer(keras.layers.Layer):
 
 
 
-def actor_def(state_shape, action_space, input_setpoint_shape=None):
+def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes=None):
+    if hidden_sizes is None:
+        hidden_sizes = [64, 64]
     low = tf.constant(action_space.low)
     high = tf.constant(action_space.high)
     input_state = keras.Input(shape=state_shape)
@@ -76,22 +77,18 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None):
         if input_setpoint_shape
         else keras.Input(shape=state_shape)
     )
-    inputs = layers.Concatenate()([input_state, input_set_point])
-    dense1 = layers.Dense(
-        64, activation="tanh",
-        kernel_regularizer=keras.regularizers.l2(0.01)
-    )(inputs)
-    dense2 = layers.Dense(
-        64, activation="tanh",
-        kernel_regularizer=keras.regularizers.l2(0.01)
-    )(dense1)
-    # dense2 = layers.Dense(256, activation='sigmoid')(dense1)
+    dense = layers.Concatenate()([input_state, input_set_point])
+    for size in hidden_sizes:
+        dense = layers.Dense(
+            size, activation="tanh",
+            kernel_regularizer=keras.regularizers.l2(0.01)
+        )(dense)
     dense3 = layers.Dense(
         action_space.shape[0],
         activation="linear",
         name="regularize_me",
         kernel_regularizer=keras.regularizers.l2(0.01)
-    )(dense2)
+    )(dense)
     sigmoided = layers.Activation("sigmoid")(dense3)
     outputs = ActionLayer(high, low)(sigmoided)
     model = keras.Model(
