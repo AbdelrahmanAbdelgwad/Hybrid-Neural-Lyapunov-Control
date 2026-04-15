@@ -276,7 +276,7 @@ def system_identify(env_name: str,
 
     validation_data = dataset.take(num_validation_batches).cache()
     pathlib.Path("caches").mkdir(parents=True, exist_ok=True)
-    data = dataset.take(num_batches).apply(tf.data.experimental.assert_cardinality(num_batches)).cache(f"caches/{env_name}_nb:{num_batches}_e:{episode_size}_b:{batch_size}")
+    data = dataset.take(num_batches).apply(tf.data.experimental.assert_cardinality(num_batches)).cache(f"caches/{env_name}_nb{num_batches}_e{episode_size}_b{batch_size}")
     if gan:
         trainer = train_GAN_step(env, generator, discriminator, learning_rate)
     else:
