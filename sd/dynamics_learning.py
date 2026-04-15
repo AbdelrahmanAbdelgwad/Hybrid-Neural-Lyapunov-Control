@@ -103,7 +103,7 @@ def gather_mini_batch(env: ModelableEnv, episode_size: int, policy=random_policy
             yield {"state": prev_obs, "action": action, "next_state": obs}
             ep_len += 1
             if ep_len >= episode_size:
-                obs = env.reset()
+                obs, _ = env.reset()
                 prev_obs = obs
                 ep_len = 0
     return true_generator
