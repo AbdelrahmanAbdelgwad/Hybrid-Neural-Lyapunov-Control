@@ -15,6 +15,7 @@ import argparse
 from .dfl import *
 from . import utils
 from sd.envs.amazingball.constant import constants
+from sd.envs.Pendulum.PendulumKerasModel import PendulumDifferenceEq  # register for model loading
 
 
 def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=None):
