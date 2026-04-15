@@ -31,7 +31,7 @@ We present a framework for jointly learning a neural Lyapunov function and a
 stabilizing controller for continuous-control systems.  The method first learns
 a neural dynamics model from environment rollouts, then co-trains a Lyapunov
 certificate $V$ and a control policy $\pi$ by optimizing a composite loss
-expressed in \emph{Differentiable Fuzzy Logic} (DFL).  The controller is
+expressed in \emph{Differentiable Fuzzy Logic} (FPL).  The controller is
 parameterized by a setpoint, enabling it to stabilize the system to arbitrary
 target states---including locomotion targets with nonzero forward velocity.
 We demonstrate the approach on the MuJoCo Hopper environment.
@@ -93,7 +93,7 @@ element-wise sigmoid.  The output is thus constrained to the valid state range.
 
 \paragraph{Loss.}
 Training minimizes a closeness metric between predicted and true next states
-expressed in DFL form (Section~\ref{sec:dfl}):
+expressed in FPL form (Section~\ref{sec:fpl}):
 \[
     \mathcal{L}_{\text{dyn}} = 1 - \text{closeness}(\hat{f}_\psi(\x_t, \uu_t, \bm{z}),\; \x_{t+1}).
 \]
@@ -102,7 +102,7 @@ expressed in DFL form (Section~\ref{sec:dfl}):
 
 Given the frozen dynamics model $\hat{f}_\psi$, we jointly optimize the
 controller $\pi_\theta$ and Lyapunov function $V_\phi$ by minimizing
-a DFL constraint tree (Section~\ref{sec:loss_tree}).
+a FPL constraint tree (Section~\ref{sec:loss_tree}).
 
 \paragraph{Network Architectures.}
 
@@ -127,10 +127,10 @@ The trained controller is deployed in the true MuJoCo environment (not the
 learned dynamics) and evaluated on total reward and visual inspection.
 
 % ===================================================================
-\section{Differentiable Fuzzy Logic (DFL)}\label{sec:dfl}
+\section{Differentiable Fuzzy Logic (FPL)}\label{sec:fpl}
 % ===================================================================
 
-DFL provides a framework for composing multiple objectives into a single
+FPL provides a framework for composing multiple objectives into a single
 differentiable scalar loss using generalized means.
 
 \subsection{Generalized Mean ($p$-mean)}
@@ -177,7 +177,7 @@ The tree is recursively scalarized to produce a single loss:
     \mathcal{L} = 1 - \text{scalarize}(\text{root}).
 \]
 
-\subsection{Auxiliary DFL Primitives}
+\subsection{Auxiliary FPL Primitives}
 
 \paragraph{Piecewise Transform.}
 Maps a value through a piecewise-linear function defined by breakpoints
@@ -212,7 +212,7 @@ while leaving small activations mostly unaffected.
 % ===================================================================
 
 For the Hopper environment ($n = 11$ state dimensions, $m = 3$ action
-dimensions), the full loss is a nested DFL constraint tree.
+dimensions), the full loss is a nested FPL constraint tree.
 
 \subsection{Multi-Step Rollout}
 
@@ -395,7 +395,7 @@ The Hopper is a planar one-legged robot from MuJoCo with:
     \FOR{each batch $\{(\x_i, \xstar_i)\}$}
         \STATE Sample rollout length $T \sim \mathcal{U}(1, T_{\max}(\text{epoch}))$
         \STATE Unroll $\x_{i,0}, \dots, \x_{i,T}$ using $\hat{f}_\psi$ and $\pi_\theta$
-        \STATE Evaluate DFL constraint tree $\mathcal{C}$
+        \STATE Evaluate FPL constraint tree $\mathcal{C}$
         \STATE $\mathcal{L} \leftarrow 1 - \text{scalarize}(\mathcal{C})$
         \STATE Update $\theta, \phi$ via Adam on $\nabla_{\theta,\phi} \mathcal{L}$
     \ENDFOR

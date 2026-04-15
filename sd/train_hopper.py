@@ -25,10 +25,10 @@ from pathlib import Path
 import argparse
 import tensorflow as tf
 import keras
-from sd.dfl import (
+from sd.fpl import (
     p_mean,
     Constraints,
-    dfl_scalar,
+    fpl_scalar,
     build_piecewise,
     scale_gradient,
     transform,
@@ -43,6 +43,7 @@ import sd.envs  # register environments
 # ---------------------------------------------------------------------------
 # Dataset generation
 # ---------------------------------------------------------------------------
+
 
 def random_setpoint():
     """Sample a random setpoint for the Hopper.
@@ -80,7 +81,11 @@ def generate_dataset(env, setpoint_fn=None):
                     break
             yield {
                 "state": np.array(obs, dtype=np.float32),
-                "setpoint": setpoint_fn() if setpoint_fn is not None else constants["default_setpoint"],
+                "setpoint": (
+                    setpoint_fn()
+                    if setpoint_fn is not None
+                    else constants["default_setpoint"]
+                ),
             }
 
     return gen_sample
@@ -94,7 +99,7 @@ CLOSENESS_RANGES = tf.constant(constants["closeness_ranges"])
 
 
 @tf.function
-def hopper_closeness_dfl(states, setpoints):
+def hopper_closeness_fpl(states, setpoints):
     """Normalized closeness between hopper states and setpoints.
 
     Positions (indices 0-4) are weighted more heavily than velocities (5-10)
@@ -109,11 +114,10 @@ def hopper_closeness_dfl(states, setpoints):
     """
     errors = tf.abs(states - setpoints)
     normalized = [
-        tf.clip_by_value(errors[i] / CLOSENESS_RANGES[i], 0.0, 1.0)
-        for i in range(11)
+        tf.clip_by_value(errors[i] / CLOSENESS_RANGES[i], 0.0, 1.0) for i in range(11)
     ]
     # De-emphasise small velocity errors with a square
-    weighted = normalized[:5] + [n ** 2.0 for n in normalized[5:]]
+    weighted = normalized[:5] + [n**2.0 for n in normalized[5:]]
     stacked = tf.clip_by_value(tf.stack(weighted), 0.0, 1.0)
     return p_mean(1.0 - stacked, 0.0)
 
@@ -121,6 +125,7 @@ def hopper_closeness_dfl(states, setpoints):
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
+
 
 def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
     optimizer = keras.optimizers.Adam(learning_rate=args.lr)
@@ -146,9 +151,7 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
         current_states = initial_states
         decrease_by = 10.0 / 100.0
         batch_size = tf.shape(initial_states)[0]
-        latent_shape = (batch_size,) + tuple(
-            dynamics_model.input["latent"].shape[1:]
-        )
+        latent_shape = (batch_size,) + tuple(dynamics_model.input["latent"].shape[1:])
         for i in range(repeat):
             outputs = actor_and_before_tanh(
                 {"state": current_states, "setpoint": set_points}
@@ -163,12 +166,8 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
                 },
                 training=True,
             )
-            lines = lines.write(
-                i, decrease_by * tf.cast(i, tf.dtypes.float32)
-            )
-            vs = vs.write(
-                i, V({"state": current_states, "setpoint": set_points})
-            )
+            lines = lines.write(i, decrease_by * tf.cast(i, tf.dtypes.float32))
+            vs = vs.write(i, V({"state": current_states, "setpoint": set_points}))
             states = states.write(i, current_states)
             actions = actions.write(i, current_actions)
             before_tanhs = before_tanhs.write(i, before_tanh)
@@ -181,7 +180,7 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
             lines.stack(),
         )
 
-    # ---- batch loss (DFL) -------------------------------------------------
+    # ---- batch loss (FPL) -------------------------------------------------
 
     @tf.function
     def batch_value(batch, percent_completion):
@@ -224,7 +223,7 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
         )
         transposed_setpoints = tf.broadcast_to(tmp_ts, target_shape)
 
-        close_to_setpoints = hopper_closeness_dfl(
+        close_to_setpoints = hopper_closeness_fpl(
             transposed_states, transposed_setpoints
         )
 
@@ -251,19 +250,15 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
 
         # V should be large for states far from the setpoint
         non_setpoint_Vx = tf.where(
-            hopper_closeness_dfl(
-                tf.transpose(prev_states), tf.transpose(set_points)
-            )
+            hopper_closeness_fpl(tf.transpose(prev_states), tf.transpose(set_points))
             > 0.95,
             1.0,
             Vx,
         )
         small_actions = p_mean(1.0 - tf.abs(actions), 0) ** 0.5
-        large_elsewhere = p_mean(
-            tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
-        )
+        large_elsewhere = p_mean(tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0)
 
-        dfl = Constraints(
+        fpl = Constraints(
             0.0,
             {
                 "close_setpoints": scale_gradient(close_to_setpoints, 1e2),
@@ -291,23 +286,21 @@ def train(batches, dynamics_model, actor, V, state_shape, setpoint_shape, args):
                 ),
             },
         )
-        return dfl
+        return fpl
 
     # ---- gradient step ----------------------------------------------------
 
     @tf.function
     def train_step(batch, epoch):
         with tf.GradientTape() as tape:
-            dfl = batch_value(batch, epoch / float(args.epochs))
-            scalar = dfl_scalar(dfl)
+            fpl = batch_value(batch, epoch / float(args.epochs))
+            scalar = fpl_scalar(fpl)
             loss = 1 - scalar
-        grads = tape.gradient(
-            loss, actor.trainable_weights + V.trainable_weights
-        )
+        grads = tape.gradient(loss, actor.trainable_weights + V.trainable_weights)
         optimizer.apply_gradients(
             zip(grads, actor.trainable_weights + V.trainable_weights)
         )
-        return scalar, dfl
+        return scalar, fpl
 
     # ---- checkpoint saving ------------------------------------------------
 
@@ -363,11 +356,17 @@ if __name__ == "__main__":
         help="Load previously saved actor/lyapunov from the checkpoint dir",
     )
     parser.add_argument(
-        "--actor_hidden_sizes", nargs="+", type=int, default=[64, 64],
+        "--actor_hidden_sizes",
+        nargs="+",
+        type=int,
+        default=[64, 64],
         help="Hidden layer sizes for the actor network (default: 64 64)",
     )
     parser.add_argument(
-        "--lyapunov_hidden_sizes", nargs="+", type=int, default=[64, 64],
+        "--lyapunov_hidden_sizes",
+        nargs="+",
+        type=int,
+        default=[64, 64],
         help="Hidden layer sizes for the Lyapunov network (default: 64 64)",
     )
     args = parser.parse_args()
@@ -395,7 +394,8 @@ if __name__ == "__main__":
         keras.models.load_model(args.ckpt_path.parent / "actor.keras")
         if args.load_saved
         else actor_def(
-            state_shape, env.action_space,
+            state_shape,
+            env.action_space,
             input_setpoint_shape=setpoint_shape,
             hidden_sizes=args.actor_hidden_sizes,
         )
@@ -418,9 +418,7 @@ if __name__ == "__main__":
     dataset = tf.data.Dataset.from_generator(
         generate_dataset(env), output_signature=dataset_spec
     )
-    batched_dataset = (
-        dataset.batch(args.batch_size).take(args.num_batches).cache()
-    )
+    batched_dataset = dataset.batch(args.batch_size).take(args.num_batches).cache()
 
     train(
         batched_dataset,

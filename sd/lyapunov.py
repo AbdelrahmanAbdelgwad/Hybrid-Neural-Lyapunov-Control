@@ -15,7 +15,9 @@ import argparse
 from .dfl import *
 from . import utils
 from sd.envs.amazingball.constant import constants
-from sd.envs.Pendulum.PendulumKerasModel import PendulumDifferenceEq  # register for model loading
+from sd.envs.Pendulum.PendulumKerasModel import (
+    PendulumDifferenceEq,
+)  # register for model loading
 
 
 def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=None):
@@ -48,23 +50,22 @@ def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=
     model.summary()
     return model
 
+
 @keras.saving.register_keras_serializable(package="MyLayers")
 class ActionLayer(keras.layers.Layer):
     def __init__(self, high, low):
         super().__init__()
         if type(high) is dict:
-            high = high['config']['value']
-            low = low['config']['value']
+            high = high["config"]["value"]
+            low = low["config"]["value"]
         self.high = np.array(high)
         self.low = np.array(low)
 
     def call(self, inputs):
-        return self.low + inputs*(self.high-self.low)
+        return self.low + inputs * (self.high - self.low)
 
     def get_config(self):
         return {"high": np.array(self.high), "low": np.array(self.low)}
-
-
 
 
 def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes=None):
@@ -81,14 +82,13 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes
     dense = layers.Concatenate()([input_state, input_set_point])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="relu",
-            kernel_regularizer=keras.regularizers.l2(0.01)
+            size, activation="relu", kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     dense3 = layers.Dense(
         action_space.shape[0],
         activation="linear",
         name="regularize_me",
-        kernel_regularizer=keras.regularizers.l2(0.01)
+        kernel_regularizer=keras.regularizers.l2(0.01),
     )(dense)
     sigmoided = layers.Activation("sigmoid")(dense3)
     outputs = ActionLayer(high, low)(sigmoided)
@@ -141,6 +141,7 @@ def angular_similarity(v1, v2):
     v2_angle = tf.math.atan2(v2[1], v2[0])
     return tf.abs(tf.abs(v1_angle - v2_angle) - pi) / pi
 
+
 @tf.function
 def ball_pos_distance_dfl(ball_pos1, ball_pos2):
     errors = tf.abs(ball_pos1 - ball_pos2)
@@ -151,7 +152,9 @@ def ball_pos_distance_dfl(ball_pos1, ball_pos2):
     errors_vx = errors[2] / (constants["max_ball_vel"] * 2.0)
     errors_vy = errors[3] / (constants["max_ball_vel"] * 2.0)
 
-    normalized_errors = tf.clip_by_value(tf.stack( [ errors_x, errors_y, errors_vx**4.0, errors_vy**4.0 ] ), 0.0, 1.0)
+    normalized_errors = tf.clip_by_value(
+        tf.stack([errors_x, errors_y, errors_vx**4.0, errors_vy**4.0]), 0.0, 1.0
+    )
 
     return p_mean(1.0 - normalized_errors, 0.0)
 
@@ -173,18 +176,27 @@ def generic_closeness_dfl(states, setpoints, ranges):
     return p_mean(1.0 - normalized, 0.0)
 
 
-
-def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, action_high=None):
+def train(
+    batches,
+    dynamics_model,
+    actor,
+    V,
+    state_shape,
+    args,
+    obs_range=None,
+    action_high=None,
+):
     # optimizer=keras.optimizers.Adam(lr=args.lr)
     optimizer = keras.optimizers.Adam(learning_rate=args.lr)
     actor_and_before_tanh = tf.keras.Model(
-            actor.input,
-            {"action": actor.output, "before_tanh": actor.layers[-3].output},
-        )
+        actor.input,
+        {"action": actor.output, "before_tanh": actor.layers[-3].output},
+    )
     V_and_before_sigmoid = tf.keras.Model(
-            V.input,
-            {"output": V.output, "before_sigmoid": V.layers[-2].output},
-        )
+        V.input,
+        {"output": V.output, "before_sigmoid": V.layers[-2].output},
+    )
+
     @tf.function
     def run_full_model(initial_states, set_points, repeat=1):
         """Runs the dynamics model for repeat steps and returns the final state and the states at each step"""
@@ -194,13 +206,13 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         actions = tf.TensorArray(tf.float32, size=repeat)
         before_tanhs = tf.TensorArray(tf.float32, size=repeat)
         current_states = initial_states
-        decrease_by = (
-            10.0 / 100.0
-        )
+        decrease_by = 10.0 / 100.0
         batch_size = tf.shape(initial_states)[0]
         latent_shape = (batch_size,) + tuple(dynamics_model.input["latent"].shape[1:])
         for i in range(repeat):
-            outputs = actor_and_before_tanh({"state": current_states, "setpoint": set_points})
+            outputs = actor_and_before_tanh(
+                {"state": current_states, "setpoint": set_points}
+            )
             current_actions = outputs["action"]
             before_tanh = outputs["before_tanh"]
             current_states = dynamics_model(
@@ -212,13 +224,18 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                 training=True,
             )
             lines = lines.write(i, decrease_by * tf.cast(i, tf.dtypes.float32))
-            vs = vs.write(i, V({"state":current_states, "setpoint": set_points}))
+            vs = vs.write(i, V({"state": current_states, "setpoint": set_points}))
             states = states.write(i, current_states)
             actions = actions.write(i, current_actions)
             before_tanhs = before_tanhs.write(i, before_tanh)
-        return current_states, tf.transpose(
-            states.stack(), [1, 0, 2]
-        ), actions.stack(), before_tanhs.stack(), vs.stack(), lines.stack()  # ok, I think this operation is to put batch back to the first dimension
+        return (
+            current_states,
+            tf.transpose(states.stack(), [1, 0, 2]),
+            actions.stack(),
+            before_tanhs.stack(),
+            vs.stack(),
+            lines.stack(),
+        )  # ok, I think this operation is to put batch back to the first dimension
 
     @tf.function
     def batch_value(batch, percent_completion):
@@ -231,9 +248,9 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         state_dim: 3: [cos(theta), sin(theta), theta_dot]
 
         """
-        maxRepetitions = int(5+10*percent_completion)
+        maxRepetitions = int(5 + 10 * percent_completion)
         # breakpoint()
-        # maxRepetitions = 5 
+        # maxRepetitions = 5
         # repetitions = tf.random.uniform(shape=[], minval=10, maxval=maxRepetitions+1, dtype=tf.dtypes.int32)
         repetitions = tf.random.uniform(
             shape=[], minval=1, maxval=maxRepetitions + 1, dtype=tf.dtypes.int32
@@ -244,13 +261,17 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
 
         # repetitions is a random int, fxu is the final state after that many steps updates.
         # states are a collection of states at each step
-        fxu, states, actions, before_tanhs, vs, lines = run_full_model(prev_states, set_points, repeat=repetitions)
-        outputs = V_and_before_sigmoid({"state": prev_states, "setpoint": set_points}, training=True)
+        fxu, states, actions, before_tanhs, vs, lines = run_full_model(
+            prev_states, set_points, repeat=repetitions
+        )
+        outputs = V_and_before_sigmoid(
+            {"state": prev_states, "setpoint": set_points}, training=True
+        )
         Vx = outputs["output"]
         Vx_before_sigmoid = outputs["before_sigmoid"]
         # the Lyapunov value at the final state after the update steps
         V_fxu = V({"state": fxu, "setpoint": set_points}, training=True)
-        
+
         # the Lyapunov value at the setpoint(origin) should be zero
         # thus a fully trained V(setpoint) should return zero. Thus zero == 1 when sufficiently trained
         state_dim = prev_states.shape[-1]
@@ -258,7 +279,9 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         if state_dim == sp_dim:
             zero_states = set_points
         else:
-            zero_states = tf.concat([prev_states[:, :set_points_dim], set_points], axis=1)
+            zero_states = tf.concat(
+                [prev_states[:, :set_points_dim], set_points], axis=1
+            )
         zero = p_mean(
             (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -1.0
         )
@@ -274,7 +297,11 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         transposed_states = tf.transpose(states, [2, 0, 1])
 
         tmp_ts = tf.expand_dims(tf.transpose(set_points), axis=-1)
-        target_shape = (tf.shape(tmp_ts)[0], tf.shape(tmp_ts)[1], tf.shape(transposed_states)[2])
+        target_shape = (
+            tf.shape(tmp_ts)[0],
+            tf.shape(tmp_ts)[1],
+            tf.shape(transposed_states)[2],
+        )
         # transposed_setpoints = tf.broadcast_to(tmp_ts, tf.shape(transposed_states))
         transposed_setpoints = tf.broadcast_to(tmp_ts, target_shape)
         """
@@ -316,18 +343,28 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
             non_setpoint_Vx = tf.where(
-                generic_closeness_dfl(tf.transpose(prev_states), tf.transpose(set_points), obs_range) > 0.95, 1.0, Vx
+                generic_closeness_dfl(
+                    tf.transpose(prev_states), tf.transpose(set_points), obs_range
+                )
+                > 0.95,
+                1.0,
+                Vx,
             )
         else:
             non_setpoint_Vx = tf.where(
-                ball_pos_distance_dfl(tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]) > 0.95, 1.0, Vx
+                ball_pos_distance_dfl(
+                    tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]
+                )
+                > 0.95,
+                1.0,
+                Vx,
             )
         if action_high is not None:
             normalized_actions = tf.abs(actions) / action_high
         else:
             normalized_actions = tf.abs(actions)
         small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
-        large_elsewhere = p_mean(
+        positive_elsewhere = p_mean(
             tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
         )  # making sure non setpoints Vx > 0.1
 
@@ -344,9 +381,14 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
                     {
                         "pop": scale_gradient(proof_of_performance, 1.0),
                         # "diff": p_mean((diff/2.0+0.5)**2.0, 0)
-                        "large": large_elsewhere,
+                        "positive": positive_elsewhere,
                         "zero": zero,
-                        "lyapunov_reg": scale_gradient(tf.minimum(transform(lyapunov_reg, 0.0, 1.0, 0.0, 1.1), 1.0), 1.0),
+                        "lyapunov_reg": scale_gradient(
+                            tf.minimum(
+                                transform(lyapunov_reg, 0.0, 1.0, 0.0, 1.1), 1.0
+                            ),
+                            1.0,
+                        ),
                     },
                 ),
                 # "actor_reg": scale_gradient(p_mean(move_toward_zero(before_tanhs), 0), 1e-4),
@@ -365,7 +407,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
     def train_step(batch, epoch):
         # for i in tf.range(1):
         with tf.GradientTape() as tape:
-            dfl = batch_value(batch, epoch/float(args.epochs))
+            dfl = batch_value(batch, epoch / float(args.epochs))
             # loss_value = scale_gradient(loss_value, 1/loss_value**4.0)
 
             # the scalar is best to be 1, so that the loss is best to be 0.
@@ -390,7 +432,9 @@ def train(batches, dynamics_model, actor, V, state_shape, args, obs_range=None, 
 
     def save_models(epoch):
         save_model(actor, Path("controller_ckpts", str(epoch), "actor.keras"))
-        save_model(lyapunov_model, Path("controller_ckpts", str(epoch), "lyapunov.keras"))
+        save_model(
+            lyapunov_model, Path("controller_ckpts", str(epoch), "lyapunov.keras")
+        )
 
     def train_and_show(batch, epoch):
         scalar, metrics = train_step(batch, epoch)
@@ -444,7 +488,9 @@ if __name__ == "__main__":
     actor = (
         keras.models.load_model(args.ckpt_path.parent / "actor.keras")
         if args.load_saved
-        else actor_def(state_shape, env.action_space, input_setpoint_shape=setpoint_shape)
+        else actor_def(
+            state_shape, env.action_space, input_setpoint_shape=setpoint_shape
+        )
     )
 
     lyapunov_model = (
@@ -464,5 +510,13 @@ if __name__ == "__main__":
         env.observation_space.high - env.observation_space.low, dtype=tf.float32
     )
     action_high = tf.constant(env.action_space.high, dtype=tf.float32)
-    train(batched_dataset, dynamics_model, actor, lyapunov_model, state_shape, args,
-          obs_range=obs_range, action_high=action_high)
+    train(
+        batched_dataset,
+        dynamics_model,
+        actor,
+        lyapunov_model,
+        state_shape,
+        args,
+        obs_range=obs_range,
+        action_high=action_high,
+    )

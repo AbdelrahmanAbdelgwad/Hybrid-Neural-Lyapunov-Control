@@ -1,6 +1,6 @@
 # Hybrid Neural Lyapunov Control
 
-Jointly learn a neural Lyapunov function and a stabilizing controller for continuous-control systems using Differentiable Fuzzy Logic (DFL).
+Jointly learn a neural Lyapunov function and a stabilizing controller for continuous-control systems using Differentiable Fuzzy Logic (FPL).
 
 ## Demo
 
@@ -15,7 +15,7 @@ Pendulum stabilization with a parameterized Lyapunov function:
 The framework learns controllers with formal stability guarantees via three stages:
 
 1. **Dynamics Learning** -- Learn a neural surrogate of the environment's transition function from random rollouts.
-2. **Lyapunov Controller Training** -- Co-train a Lyapunov certificate V and a control policy using the learned dynamics and a DFL loss.
+2. **Lyapunov Controller Training** -- Co-train a Lyapunov certificate V and a control policy using the learned dynamics and a FPL loss.
 3. **Evaluation** -- Deploy the trained controller in the real (MuJoCo) environment.
 
 Both V and the actor are parameterized by a **setpoint**, so a single trained controller can stabilize to different targets (e.g., stand vs. run).
@@ -149,7 +149,7 @@ python -m sd.rl.sac
 
 ```
 sd/
-  dfl.py                  # Differentiable Fuzzy Logic (p-mean, Constraints, piecewise)
+  fpl.py                  # Differentiable Fuzzy Logic (p-mean, Constraints, piecewise)
   lyapunov.py             # V and actor network definitions, Pendulum/AmazingBall training
   train_hopper.py         # Hopper-specific Lyapunov training with randomized setpoints
   test_hopper.py          # Hopper evaluation script
