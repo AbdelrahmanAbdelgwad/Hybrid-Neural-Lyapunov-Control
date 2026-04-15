@@ -233,13 +233,12 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
         
         # the Lyapunov value at the setpoint(origin) should be zero
         # thus a fully trained V(setpoint) should return zero. Thus zero == 1 when sufficiently trained
-        # if tf.shape(fxu)[1] != tf.shape(set_points)[1]:
-        zero_states = tf.concat([prev_states[:, :set_points_dim], set_points], axis=1)
-        # else:
-        #     zero_states = set_points
-        # tf.print(zero_states)
-        # tf.print(set_points)
-        # tf.print(V({"state": zero_states, "setpoint": set_points}))
+        state_dim = prev_states.shape[-1]
+        sp_dim = set_points.shape[-1]
+        if state_dim == sp_dim:
+            zero_states = set_points
+        else:
+            zero_states = tf.concat([prev_states[:, :set_points_dim], set_points], axis=1)
         zero = p_mean(
             (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -1.0
         )
