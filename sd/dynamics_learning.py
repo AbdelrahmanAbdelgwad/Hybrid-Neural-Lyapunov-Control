@@ -283,11 +283,18 @@ def system_identify(env_name: str,
         trainer = train_direct_step(env, generator, learning_rate)
 
     def save_checkpoint(epoch):
-        for batch in validation_data:
-            print(show_info(direct_dfls(generator, batch, env.closeness_dfl)))
-        utils.save_checkpoint(filepath, generator, epoch)
+        try:
+            for batch in validation_data:
+                constraints = direct_dfls(generator, batch, env.closeness_dfl)
+                print(f"{dfl.dfl_scalar(constraints):.2e}|{constraints}")
+            utils.save_checkpoint(filepath, generator, epoch)
+        except Exception as e:
+            import traceback
+            print(f"\nError in save_checkpoint: {e}")
+            traceback.print_exc()
 
     utils.train_loop([data]*epochs, trainer, every_n_seconds={"freq": save_freq, "callback": save_checkpoint})
+    save_checkpoint("final")
 
 
 if __name__ == "__main__":
