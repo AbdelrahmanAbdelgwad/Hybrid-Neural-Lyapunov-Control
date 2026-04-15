@@ -192,7 +192,7 @@ def gan_dfls(generator, discriminator, real_batch, closeness_dfl):
 
 
 def train_direct_step(env: ModelableEnv, generator, learning_rate):
-    gen_optimizer = keras.optimizers.Adam(lr=learning_rate)
+    gen_optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
 
     @tf.function
     def gradient_step(batch):
@@ -213,8 +213,8 @@ def train_direct_step(env: ModelableEnv, generator, learning_rate):
 
 
 def train_GAN_step(env: ModelableEnv, generator, discriminator, learning_rate):
-    gen_optimizer = keras.optimizers.Adam(lr=learning_rate)
-    disc_optimizer = keras.optimizers.Adam(lr=learning_rate)
+    gen_optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
+    disc_optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
 
     @tf.function
     def gradient_step(batch):
