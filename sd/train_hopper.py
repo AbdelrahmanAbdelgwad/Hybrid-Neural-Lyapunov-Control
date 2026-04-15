@@ -362,6 +362,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Load previously saved actor/lyapunov from the checkpoint dir",
     )
+    parser.add_argument(
+        "--actor_hidden_sizes", nargs="+", type=int, default=[64, 64],
+        help="Hidden layer sizes for the actor network (default: 64 64)",
+    )
+    parser.add_argument(
+        "--lyapunov_hidden_sizes", nargs="+", type=int, default=[64, 64],
+        help="Hidden layer sizes for the Lyapunov network (default: 64 64)",
+    )
     args = parser.parse_args()
 
     if args.ckpt_path is None:
@@ -387,14 +395,20 @@ if __name__ == "__main__":
         keras.models.load_model(args.ckpt_path.parent / "actor.keras")
         if args.load_saved
         else actor_def(
-            state_shape, env.action_space, input_setpoint_shape=setpoint_shape
+            state_shape, env.action_space,
+            input_setpoint_shape=setpoint_shape,
+            hidden_sizes=args.actor_hidden_sizes,
         )
     )
 
     lyapunov_model = (
         keras.models.load_model(args.ckpt_path.parent / "lyapunov.keras")
         if args.load_saved
-        else V_def(state_shape, input_setpoint_shape=setpoint_shape)
+        else V_def(
+            state_shape,
+            input_setpoint_shape=setpoint_shape,
+            hidden_sizes=args.lyapunov_hidden_sizes,
+        )
     )
 
     state_spec = tf.TensorSpec(state_shape)
