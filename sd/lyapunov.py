@@ -30,7 +30,7 @@ def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=
     dense = layers.Concatenate()([input_state, input_setpoint])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
+            size, activation="relu", kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     before_sigmoid = layers.Dense(
         1, activation=None, kernel_regularizer=keras.regularizers.l2(0.01)
@@ -81,7 +81,7 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes
     dense = layers.Concatenate()([input_state, input_set_point])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="tanh",
+            size, activation="relu",
             kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     dense3 = layers.Dense(
