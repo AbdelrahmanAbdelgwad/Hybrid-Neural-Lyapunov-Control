@@ -22,7 +22,7 @@ from gymnasium import spaces
 import numpy as np
 import tensorflow as tf
 from sd.envs.modelable_env import ModelableEnv
-from sd import dfl
+from sd import fpl
 from sd.envs.hopper.constant import constants
 
 
@@ -96,9 +96,9 @@ class HopperLyapunovEnv(ModelableEnv):
 
     @staticmethod
     @tf.function
-    def closeness_dfl(obs1, obs2):
+    def closeness_fpl(obs1, obs2):
         abs_diff = tf.abs(obs1 - obs2)
-        return 1.0 / dfl.p_mean((1.0 + abs_diff), 1.0)
+        return 1.0 / fpl.p_mean((1.0 + abs_diff), 1.0)
 
 
 if __name__ == "__main__":

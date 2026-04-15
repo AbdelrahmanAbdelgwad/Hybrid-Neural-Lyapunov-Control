@@ -7,7 +7,7 @@ import numpy as np
 from gymnasium import spaces
 import tensorflow as tf
 # from pybullet_utils import bullet_client as bc
-from sd import dfl
+from sd import fpl
 from sd.rl import utils
 from sd.envs.modelable_env import ModelableEnv, ModelableWrapper
 import pygame
@@ -399,9 +399,9 @@ class SetpointWrapper(ModelableEnv, gym.Wrapper):
         max_velocity_diff = vel_space.high - vel_space.low
         normed_position_error = tf.maximum(tf.abs(obs["state"]["position"] - obs["setpoint"]["position"])/max_position_diff, 1.0)
         normed_velocity_error = tf.maximum(tf.abs(obs["state"]["velocity"] - obs["setpoint"]["velocity"])/max_velocity_diff, 1.0)
-        position_closeness = dfl.p_mean(1.0 - normed_position_error, 0.5)
-        velocity_closeness = dfl.p_mean(1.0 - normed_velocity_error, 0.5)
-        action_smallness = dfl.p_mean(1.0-tf.cast(action, tf.float64), 0.5)
+        position_closeness = fpl.p_mean(1.0 - normed_position_error, 0.5)
+        velocity_closeness = fpl.p_mean(1.0 - normed_velocity_error, 0.5)
+        action_smallness = fpl.p_mean(1.0-tf.cast(action, tf.float64), 0.5)
         return action_smallness*position_closeness*velocity_closeness
 
     def done(self, done, reward):

@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from tqdm.autonotebook import tqdm
 from typing import TypedDict, Optional, Callable, Any
-from . import dfl
+from . import fpl
 import gymnasium as gym
 
 def map_dict_elems(fn, d):
@@ -112,7 +112,7 @@ class PMean(tf.keras.regularizers.Regularizer):
         self.p = p
 
     def __call__(self, x):
-        return dfl.p_mean(x, self.p)
+        return fpl.p_mean(x, self.p)
 
     def get_config(self):
         return {'p': float(self.p)}
