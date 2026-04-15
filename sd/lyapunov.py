@@ -12,7 +12,7 @@ from keras import layers
 from functools import reduce
 from pathlib import Path
 import argparse
-from .dfl import *
+from .fpl import *
 from . import utils
 from sd.envs.amazingball.constant import constants
 from sd.envs.Pendulum.PendulumKerasModel import (
@@ -143,7 +143,7 @@ def angular_similarity(v1, v2):
 
 
 @tf.function
-def ball_pos_distance_dfl(ball_pos1, ball_pos2):
+def ball_pos_distance_fpl(ball_pos1, ball_pos2):
     errors = tf.abs(ball_pos1 - ball_pos2)
     # max_ball_pos = tf.constant([constants["max_ball_pos_x"], constants["max_ball_pos_y"]])
     # repeated_max_ball_pos = tf.repeat(max_ball_pos, tf.shape(ball_pos1))
@@ -160,7 +160,7 @@ def ball_pos_distance_dfl(ball_pos1, ball_pos2):
 
 
 @tf.function
-def generic_closeness_dfl(states, setpoints, ranges):
+def generic_closeness_fpl(states, setpoints, ranges):
     """Generic closeness metric for envs where state_dim == setpoint_dim.
 
     Args:
@@ -309,11 +309,11 @@ def train(
                     transposed_setpoints shape: (state_dim:4, batch_size, repeat)
         """
         if state_dim == sp_dim:
-            close_to_setpoints = generic_closeness_dfl(
+            close_to_setpoints = generic_closeness_fpl(
                 transposed_states, transposed_setpoints, obs_range
             )
         else:
-            close_to_setpoints = ball_pos_distance_dfl(
+            close_to_setpoints = ball_pos_distance_fpl(
                 transposed_states[4:8], transposed_setpoints[0:4]
             )
         # as_all = angular_similarity(transposed_states, transposed_setpoints)
@@ -343,7 +343,7 @@ def train(
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
             non_setpoint_Vx = tf.where(
-                generic_closeness_dfl(
+                generic_closeness_fpl(
                     tf.transpose(prev_states), tf.transpose(set_points), obs_range
                 )
                 > 0.95,
@@ -352,7 +352,7 @@ def train(
             )
         else:
             non_setpoint_Vx = tf.where(
-                ball_pos_distance_dfl(
+                ball_pos_distance_fpl(
                     tf.transpose(prev_states)[4:8], tf.transpose(set_points)[0:4]
                 )
                 > 0.95,
@@ -368,7 +368,7 @@ def train(
             tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
         )  # making sure non setpoints Vx > 0.1
 
-        dfl = Constraints(
+        fpl = Constraints(
             0.0,
             {
                 # "activity": tf.minimum(1.0, 1.3-(tf.sqrt(tf.reduce_mean((actions*1.5)**2.0))))**0.5,
@@ -397,7 +397,7 @@ def train(
             },
         )
 
-        return dfl
+        return fpl
 
     # @tf.function
     def set_gradient_size(gradients, size):
@@ -407,11 +407,11 @@ def train(
     def train_step(batch, epoch):
         # for i in tf.range(1):
         with tf.GradientTape() as tape:
-            dfl = batch_value(batch, epoch / float(args.epochs))
+            fpl = batch_value(batch, epoch / float(args.epochs))
             # loss_value = scale_gradient(loss_value, 1/loss_value**4.0)
 
             # the scalar is best to be 1, so that the loss is best to be 0.
-            scalar = dfl_scalar(dfl)
+            scalar = fpl_scalar(fpl)
             loss = 1 - scalar
             # tf.print(value)
         grads = tape.gradient(loss, actor.trainable_weights + V.trainable_weights)
@@ -428,7 +428,7 @@ def train(
             zip(grads, actor.trainable_weights + V.trainable_weights)
         )
 
-        return scalar, dfl
+        return scalar, fpl
 
     def save_models(epoch):
         save_model(actor, Path("controller_ckpts", str(epoch), "actor.keras"))
