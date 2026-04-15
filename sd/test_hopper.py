@@ -21,11 +21,13 @@ from sd.lyapunov import ActionLayer  # register custom Keras layer for model loa
 from sd.envs.hopper.constant import constants
 
 
-def run_test(actor, lyapunov=None, num_steps=1000, render=True, seed=None):
+def run_test(actor, lyapunov=None, num_steps=1000, render=True, seed=None, target_vel=0.0):
     render_mode = "human" if render else None
     env = gym.make("HopperLyapunov-v0", render_mode=render_mode)
 
-    setpoint = constants["default_setpoint"]
+    setpoint = constants["default_setpoint"].copy()
+    setpoint[5] = target_vel  # forward velocity target
+    print(f"Target forward velocity: {target_vel}")
 
     obs, _ = env.reset(seed=seed)
     print(f"Initial obs: {obs}")
@@ -78,6 +80,8 @@ if __name__ == "__main__":
         "--random_actor", action="store_true",
         help="Use random actions instead of trained actor",
     )
+    parser.add_argument("--target_vel", type=float, default=0.0,
+                        help="Target forward velocity (0=stand, 2=run)")
     parser.add_argument("--num_steps", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--no_render", action="store_true")
@@ -108,4 +112,5 @@ if __name__ == "__main__":
         num_steps=args.num_steps,
         render=not args.no_render,
         seed=args.seed,
+        target_vel=args.target_vel,
     )

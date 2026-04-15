@@ -44,13 +44,31 @@ import sd.envs  # register environments
 # Dataset generation
 # ---------------------------------------------------------------------------
 
+def random_setpoint():
+    """Sample a random setpoint for the Hopper.
+
+    State layout: [z_pos, angle, thigh, leg, foot,
+                   x_vel, z_vel, ang_vel, thigh_vel, leg_vel, foot_vel]
+
+    We randomize the target forward velocity (x_vel) so the controller
+    learns to stabilize at different speeds, not just standing still.
+    """
+    sp = constants["default_setpoint"].copy()
+    # Randomize forward velocity: 0 (stand) to 3.0 (run)
+    sp[5] = np.random.uniform(0.0, 3.0)
+    # Slight height variation
+    sp[0] = np.random.uniform(1.1, 1.4)
+    return sp.astype(np.float32)
+
+
 def generate_dataset(env):
     """Generates (state, setpoint) pairs for Lyapunov training.
 
     States are sampled by resetting the env and taking a random number of
     steps with a random policy, producing diverse initial conditions.
+    Setpoints are randomized (especially forward velocity) so the controller
+    learns to track different targets.
     """
-    setpoint = constants["default_setpoint"]
 
     def gen_sample():
         while True:
@@ -64,7 +82,7 @@ def generate_dataset(env):
                     break
             yield {
                 "state": np.array(obs, dtype=np.float32),
-                "setpoint": setpoint.copy(),
+                "setpoint": random_setpoint(),
             }
 
     return gen_sample
