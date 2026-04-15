@@ -359,14 +359,40 @@ def train(
                 1.0,
                 Vx,
             )
+
+        # Also check V > 0 at ROLLED-OUT states (not just initial states).
+        # Without this, V can collapse to 0 in regions the actor drives to,
+        # trivially satisfying pop (V decreases) without stabilizing.
+        # vs shape: (repeat, batch, 1)
+        # transposed_states shape: (state_dim, batch, repeat)
+        if state_dim == sp_dim:
+            # Per-(batch, repeat) closeness to setpoint
+            traj_errors = tf.abs(transposed_states - transposed_setpoints)
+            ranges_bc = tf.reshape(obs_range, [-1, 1, 1])
+            traj_normalized = tf.clip_by_value(traj_errors / ranges_bc, 0.0, 0.99)
+            traj_closeness = p_mean(1.0 - traj_normalized, 0.0, axis=0)  # (batch, repeat)
+        else:
+            traj_closeness = ball_pos_distance_fpl(
+                transposed_states[4:8], transposed_setpoints[0:4]
+            )
+        # vs: (repeat, batch, 1) -> (batch, repeat)
+        vs_2d = tf.squeeze(tf.transpose(vs, [1, 0, 2]), axis=-1)
+        non_setpoint_vs = tf.where(traj_closeness > 0.95, 1.0, vs_2d)
+
+        # Combine initial and trajectory positivity checks
+        all_non_setpoint_V = tf.concat(
+            [tf.reshape(non_setpoint_Vx, [-1]), tf.reshape(non_setpoint_vs, [-1])],
+            axis=0,
+        )
+
         if action_high is not None:
             normalized_actions = tf.abs(actions) / action_high
         else:
             normalized_actions = tf.abs(actions)
         small_actions = p_mean(tf.maximum(1.0 - normalized_actions, 0.0), 0) ** 0.5
         positive_elsewhere = p_mean(
-            tf.minimum(non_setpoint_Vx * 2, 1.0), -2.0
-        )  # making sure non setpoints Vx > 0.1
+            tf.minimum(all_non_setpoint_V * 2, 1.0), -2.0
+        )  # V > 0.5 everywhere except setpoint
 
         fpl = Constraints(
             0.0,
