@@ -59,7 +59,7 @@ def random_setpoint():
     return sp.astype(np.float32)
 
 
-def generate_dataset(env):
+def generate_dataset(env, setpoint_fn=None):
     """Generates (state, setpoint) pairs for Lyapunov training.
 
     States are sampled by resetting the env and taking a random number of
@@ -80,7 +80,7 @@ def generate_dataset(env):
                     break
             yield {
                 "state": np.array(obs, dtype=np.float32),
-                "setpoint": random_setpoint(),
+                "setpoint": setpoint_fn() if setpoint_fn is not None else constants["default_setpoint"],
             }
 
     return gen_sample

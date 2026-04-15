@@ -9,9 +9,11 @@ constants = {
     'max_joint_angle': 1.5,
     'max_foot_angle': 1.5,
 
-    # Default setpoint: upright standing, zero velocities
+    # Default setpoint: upright standing, some set forward velocity 
+    # state is [z_pos, angle, thigh, leg, foot, x_vel, z_vel, ang_vel, thigh_vel, leg_vel, foot_vel]
+
     'default_setpoint': np.array(
-        [1.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [1.25, 0.0, 0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0],
         dtype=np.float32
     ),
 
