@@ -29,7 +29,7 @@ def V_def(state_shape: Tuple[int, ...], input_setpoint_shape=None, hidden_sizes=
     dense = layers.Concatenate()([input_state, input_setpoint])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="tanh", kernel_regularizer=keras.regularizers.l2(0.01)
+            size, activation="relu", kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     before_sigmoid = layers.Dense(
         1, activation=None, kernel_regularizer=keras.regularizers.l2(0.01)
@@ -80,7 +80,7 @@ def actor_def(state_shape, action_space, input_setpoint_shape=None, hidden_sizes
     dense = layers.Concatenate()([input_state, input_set_point])
     for size in hidden_sizes:
         dense = layers.Dense(
-            size, activation="tanh",
+            size, activation="relu",
             kernel_regularizer=keras.regularizers.l2(0.01)
         )(dense)
     dense3 = layers.Dense(
@@ -105,18 +105,18 @@ def generate_dataset(env: gym.Env):
             obs, _ = env.reset()
             obs = np.array(obs)
             # obs[0:5] = 0.0
-            ## PENDULUM START
-            # obs[2] = obs[2]*7.0
-            # # angle = np.where(np.abs(np.cos(init_state)) < 0.7, 0.0, init_state) # randomize setpoints
-            # # angle = np.random.uniform(-np.pi/7.0, np.pi/7.0) + np.random.randint(2)*np.pi
-            # # yield {"state":obs, "setpoint": [np.cos(angle), np.sin(angle), 0.0]}
-            # yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]}
-            # # yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]} if np.random.randint(2) == 1 else {"state": obs, "setpoint":[-1.0,0.0,0.0]}
-            ## PENDULUM END
+            # PENDULUM START
+            obs[2] = obs[2]*7.0
+            # angle = np.where(np.abs(np.cos(init_state)) < 0.7, 0.0, init_state) # randomize setpoints
+            # angle = np.random.uniform(-np.pi/7.0, np.pi/7.0) + np.random.randint(2)*np.pi
+            # yield {"state":obs, "setpoint": [np.cos(angle), np.sin(angle), 0.0]}
+            yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]}
+            # yield {"state": obs, "setpoint":[1.0, 0.0, 0.0]} if np.random.randint(2) == 1 else {"state": obs, "setpoint":[-1.0,0.0,0.0]}
+            # PENDULUM END
 
-            ## AMAZINGBALL START
-            yield {"state": np.array(obs), "setpoint": np.array([0.0, 0.0, 0.0, 0.0])}
-            ## AMAZINGBALL END
+            # ## AMAZINGBALL START
+            # yield {"state": np.array(obs), "setpoint": np.array([0.0, 0.0, 0.0, 0.0])}
+            # ## AMAZINGBALL END
 
     return gen_sample
 
@@ -303,7 +303,7 @@ def train(batches, dynamics_model, actor, V, state_shape, args):
                 # "activity": tf.minimum(1.0, 1.3-(tf.sqrt(tf.reduce_mean((actions*1.5)**2.0))))**0.5,
                 # "close_angles": scale_gradient(p_mean(as_all, 2.0), 1.0),
                 # "close_angles": build_piecewise([(0.0, 0.0), (0.6, 0.01), (0.7, 0.9), (1.0, 1.0)], p_mean(as_all, 2.0)),
-                "close_setpoints": scale_gradient(close_to_setpoints, 1e2),
+                # "close_setpoints": scale_gradient(close_to_setpoints, 1e2),
                 "small_actions": scale_gradient(small_actions, 1e-3),
                 "lyapunov": Constraints(
                     0.0,
