@@ -286,14 +286,10 @@ def train(
             (1.0 - V({"state": zero_states, "setpoint": set_points}) ** 0.5), -1.0
         )
 
-        # for condition: V shall decrease along time (i.e. along the update steps)
-        # diff = (Vx - V_fxu)
-
-        diff = Vx - vs
-        # tf.print(Vx)
-        # tf.print("pompe")
-        # tf.print(V_fxu)
-        # tf.print("chchch")
+        # Consecutive V decrease: V must decrease at every step toward 0
+        Vx_expanded = tf.expand_dims(Vx, 0)  # (1, batch, 1)
+        all_Vs = tf.concat([Vx_expanded, vs], axis=0)  # (repeat+1, batch, 1)
+        diff = all_Vs[:-1] - all_Vs[1:]  # (repeat, batch, 1)
         transposed_states = tf.transpose(states, [2, 0, 1])
 
         tmp_ts = tf.expand_dims(tf.transpose(set_points), axis=-1)
@@ -322,23 +318,19 @@ def train(
         actor_reg = 1 - tf.tanh(tf.reduce_mean(actor.losses))
         lyapunov_reg = 1 - tf.tanh(tf.reduce_mean(V.losses))
 
-        # if near the setpoint, decrease slower. otherwise decrease faster. This shapes the Lyapunov function.
         repetitionsf = tf.cast(repetitions, tf.dtypes.float32)
         maxRepetitionsf = tf.cast(maxRepetitions, tf.dtypes.float32)
         decrease_by = (
             10.0 / 100.0
-        )  # should arrive to the target within 100 steps, think about maximizing this parameter
-        line = tf.minimum(
-            lines, Vx
-        )  # how much we would like taking a step to reduce V by
-        # tf.print(tf.reduce_mean(diff))
+        )  # fraction of current V to decrease per step
+        line = decrease_by * all_Vs[:-1]  # per-step target proportional to current V
         proof_of_performance = p_mean(
             build_piecewise(
                 [(-1.0, 0.0), (-0.1, 1e-5), (0.0, 0.01), (line, 0.9), (1.0, 1.0)],
                 diff,
                 clipped=True,
             ),
-            0.0,
+            -2.0,
         )
         # for now proof of performance has a hardcoded piecewise linear function for the ranges that we consider critical (negative values) vs nice to have (above line)
         if state_dim == sp_dim:
