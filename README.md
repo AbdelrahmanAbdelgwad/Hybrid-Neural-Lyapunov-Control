@@ -84,17 +84,23 @@ Checkpoints are saved to `models/<env_name>/<run_id>/checkpoints/`.
 Co-train the Lyapunov function and actor using the learned dynamics:
 
 ```bash
-# Pendulum / AmazingBall (uses sd/lyapunov.py)
+# Pendulum (auto-discovers latest dynamics checkpoint)
 python -m sd.lyapunov
+
+# Pendulum with explicit dynamics checkpoint
+python -m sd.lyapunov --ckpt_path models/Pendulum-v2/<run>/checkpoints/checkpoint<N>/model.keras
+
+# Resume training from a previously saved controller
+python -m sd.lyapunov --load_saved --ckpt_path <dynamics_ckpt>
+
+# Custom training parameters
+python -m sd.lyapunov --epochs 200 --batch_size 256 --lr 5e-4
 
 # Hopper (uses sd/train_hopper.py)
 python -m sd.train_hopper
 
-# Specify a dynamics checkpoint explicitly
+# Hopper with explicit checkpoint
 python -m sd.train_hopper --ckpt_path models/HopperLyapunov-v0/<run>/checkpoints/checkpoint<N>/model.keras
-
-# Resume from saved controller
-python -m sd.train_hopper --load_saved --ckpt_path <dynamics_ckpt>
 ```
 
 If no `--ckpt_path` is given, the most recently saved dynamics model is used automatically.
@@ -116,12 +122,38 @@ Scalar: 8.00e-01|||0.0<close_setpoints:9.3e-01 small_actions:5.3e-01 lyapunov:0.
 
 ### Step 3: Test the Controller
 
+#### Pendulum
+
 ```bash
-# Hopper -- stand (default setpoint)
+# Auto-discover latest trained controller and run
+python -m sd.test_pendulum
+
+# Plot the Lyapunov function as a phase portrait (theta vs thetadot)
+python -m sd.test_pendulum --plot
+
+# Plot only (skip simulation)
+python -m sd.test_pendulum --plot --no_test
+
+# Explicit paths
+python -m sd.test_pendulum \
+    --actor_path models/Pendulum-v2/<run>/checkpoints/<ckpt>/controller_ckpts/<epoch>/actor.keras \
+    --lyapunov_path models/Pendulum-v2/<run>/checkpoints/<ckpt>/controller_ckpts/<epoch>/lyapunov.keras
+
+# Random actor baseline
+python -m sd.test_pendulum --random_actor
+
+# Longer simulation, no rendering
+python -m sd.test_pendulum --num_steps 2000 --no_render
+```
+
+#### Hopper
+
+```bash
+# Stand (default setpoint)
 python -m sd.test_hopper \
     --actor_path models/HopperLyapunov-v0/<run>/checkpoints/<ckpt>/controller_ckpts/<epoch>/actor.keras
 
-# Hopper -- run at target velocity
+# Run at target velocity
 python -m sd.test_hopper \
     --actor_path <path>/actor.keras \
     --target_vel 2.0
@@ -129,13 +161,15 @@ python -m sd.test_hopper \
 # With Lyapunov value printing
 python -m sd.test_hopper \
     --actor_path <path>/actor.keras \
-    --lyapunov_path <path>/lyapunov.keras \
-    --target_vel 2.0
+    --lyapunov_path <path>/lyapunov.keras
 
 # Random baseline
 python -m sd.test_hopper --random_actor
+```
 
-# Pendulum / AmazingBall
+#### AmazingBall
+
+```bash
 python -m sd.test --random_actor
 ```
 
@@ -152,6 +186,7 @@ sd/
   fpl.py                  # Differentiable Fuzzy Logic (p-mean, Constraints, piecewise)
   lyapunov.py             # V and actor network definitions, Pendulum/AmazingBall training
   train_hopper.py         # Hopper-specific Lyapunov training with randomized setpoints
+  test_pendulum.py        # Pendulum evaluation with auto-discovery and Lyapunov plotting
   test_hopper.py          # Hopper evaluation script
   test.py                 # AmazingBall evaluation script
   dynamics_learning.py    # Neural dynamics model training (GAN or direct)
