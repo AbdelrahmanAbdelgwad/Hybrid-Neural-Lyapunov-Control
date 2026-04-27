@@ -146,6 +146,23 @@ python -m sd.test_pendulum --random_actor
 python -m sd.test_pendulum --num_steps 2000 --no_render
 ```
 
+**Interactive setpoints.** Both the controller and the Lyapunov function are
+parameterized by setpoint, so a single trained model can stabilize the pendulum
+to any target angle (not just upright). Two ways to drive it:
+
+- **Pygame simulation window** -- hold the left mouse button anywhere in the
+  window to set the target angle. The cursor's angle relative to the pivot
+  (screen center) becomes the new setpoint, and the controller drives the
+  pendulum there in real time.
+- **Matplotlib Lyapunov plot** (with `--plot`):
+  - Left click on the phase portrait -> change the target `theta` and redraw V
+  - Right click on a phase point -> simulate a trajectory from that
+    `(theta, thetadot)` using actor + dynamics, scattered as red dots fading dark
+
+Training already exposes the model to random setpoints (a fresh random target
+angle is sampled per training sample), so the controller generalizes across
+target angles by construction.
+
 #### Hopper
 
 ```bash

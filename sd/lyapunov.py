@@ -134,13 +134,19 @@ def generate_dataset(env: gym.Env):
     """Creates a generator that yields {state, setpoint} training samples.
 
     Each sample is produced by resetting the environment (which randomizes the state),
-    then pairing it with the fixed stabilization setpoint for that environment.
-    The generator yields indefinitely; TF Dataset handles batching and epoch structure.
+    then pairing it with a setpoint. For envs that take a setpoint as input, we
+    randomize the setpoint per-sample so the trained controller learns to stabilize
+    to ANY target — not just one fixed equilibrium. This is what makes a single
+    network usable for different goals (e.g. swing-up to any angle).
 
-    For Pendulum: state=[cos(theta), sin(theta), thetadot], setpoint=[1, 0, 0] (upright).
-    env.reset() randomizes theta in [-pi, pi] and thetadot in [-1, 1], giving uniform
-    coverage of the state space. This coverage matters: if training only sees states
-    near the setpoint, the Lyapunov function may not learn the correct shape far away.
+    For Pendulum: state=[cos(theta), sin(theta), thetadot]. We sample a random
+    target angle in [-pi, pi] and convert to setpoint [cos(target), sin(target), 0].
+    env.reset() randomizes theta in [-pi, pi] and thetadot in [-1, 1].
+    The (state, setpoint) pair is therefore uniformly distributed over the joint
+    space, giving the controller broad coverage during training.
+
+    For AmazingBall: setpoint is the desired ball position+velocity (4D); state
+    is 8D. We keep the setpoint at zero (centered ball, at rest) for now.
     """
     obs_shape = env.observation_space.shape
     try:
@@ -155,7 +161,15 @@ def generate_dataset(env: gym.Env):
             if sp_shape == (4,) and obs_shape == (8,):
                 setpoint = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
             elif obs_shape == (3,):
-                setpoint = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+                # Random target angle uniformly in [-pi, pi].
+                # Setpoint is the unit-circle representation [cos, sin] with zero
+                # angular velocity. The controller learns to stabilize the pendulum
+                # at this target — not just upright.
+                target_angle = np.random.uniform(-np.pi, np.pi)
+                setpoint = np.array(
+                    [np.cos(target_angle), np.sin(target_angle), 0.0],
+                    dtype=np.float32,
+                )
             else:
                 setpoint = np.zeros(sp_shape, dtype=np.float32)
             yield {"state": obs, "setpoint": setpoint}
