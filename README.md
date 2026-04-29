@@ -96,6 +96,9 @@ python -m sd.lyapunov --load_saved --ckpt_path <dynamics_ckpt>
 # Custom training parameters
 python -m sd.lyapunov --epochs 200 --batch_size 256 --lr 5e-4
 
+# Alternating training: even epochs update V only, odd epochs update actor only
+python -m sd.lyapunov --alternate
+
 # Hopper (uses sd/train_hopper.py)
 python -m sd.train_hopper
 

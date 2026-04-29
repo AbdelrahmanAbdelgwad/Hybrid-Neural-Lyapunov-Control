@@ -252,6 +252,12 @@ def train(
       5. Scalarize the constraint tree into a single loss via generalized means
       6. Backprop through: V + actor + dynamics_model (frozen) to update V and actor weights
 
+    With --alternate: instead of updating both networks every step, we alternate
+    by epoch. Even epochs freeze the actor and only update V (learning the correct
+    Lyapunov landscape for the current controller). Odd epochs freeze V and only
+    update the actor (learning actions that decrease the frozen V). This prevents
+    the two networks from "chasing each other" and can stabilize training.
+
     Args:
         batches: TF Dataset of {state, setpoint} batches
         dynamics_model: frozen learned dynamics f(state, action) -> next_state
@@ -604,21 +610,8 @@ def train(
         return size * gradients / tf.norm(gradients)
 
     @tf.function
-    def train_step(batch, epoch):
-        """One gradient step: evaluate constraints, compute loss, update weights.
-
-        The loss is simply: loss = 1 - scalar, where scalar = fpl_scalar(constraints).
-        fpl_scalar recursively scalarizes the Constraints tree using generalized means:
-          - Each Constraints node combines its children with p_mean(children, p)
-          - Leaf tensors are used directly
-        The result is a single scalar in [0, 1]: 1 = all conditions perfectly met, 0 = total failure.
-
-        GradientTape records all operations inside batch_value (including the rollout through
-        the dynamics model), so gradients flow through:
-          loss -> V weights (to shape V correctly)
-          loss -> actor weights (to choose actions that make V decrease)
-        The dynamics_model weights are NOT updated (it's frozen, used in inference mode).
-        """
+    def train_step_both(batch, epoch):
+        """Update both actor and V weights in a single step (default mode)."""
         with tf.GradientTape() as tape:
             fpl = batch_value(batch, epoch / float(args.epochs))
             scalar = fpl_scalar(fpl)
@@ -627,7 +620,28 @@ def train(
         optimizer.apply_gradients(
             zip(grads, actor.trainable_weights + V.trainable_weights)
         )
+        return scalar, fpl
 
+    @tf.function
+    def train_step_V_only(batch, epoch):
+        """Update only V weights. Actor is frozen this epoch."""
+        with tf.GradientTape() as tape:
+            fpl = batch_value(batch, epoch / float(args.epochs))
+            scalar = fpl_scalar(fpl)
+            loss = 1 - scalar
+        grads = tape.gradient(loss, V.trainable_weights)
+        optimizer.apply_gradients(zip(grads, V.trainable_weights))
+        return scalar, fpl
+
+    @tf.function
+    def train_step_actor_only(batch, epoch):
+        """Update only actor weights. V is frozen this epoch."""
+        with tf.GradientTape() as tape:
+            fpl = batch_value(batch, epoch / float(args.epochs))
+            scalar = fpl_scalar(fpl)
+            loss = 1 - scalar
+        grads = tape.gradient(loss, actor.trainable_weights)
+        optimizer.apply_gradients(zip(grads, actor.trainable_weights))
         return scalar, fpl
 
     def save_models(epoch):
@@ -637,8 +651,19 @@ def train(
         )
 
     def train_and_show(batch, epoch):
-        scalar, metrics = train_step(batch, epoch)
-        return f"Scalar: {scalar:.2e}|||{metrics}"
+        if args.alternate:
+            # Even epochs: train V only (learn the right Lyapunov landscape).
+            # Odd epochs: train actor only (learn actions that satisfy the frozen V).
+            if epoch % 2 == 0:
+                scalar, metrics = train_step_V_only(batch, epoch)
+                label = "V"
+            else:
+                scalar, metrics = train_step_actor_only(batch, epoch)
+                label = "actor"
+        else:
+            scalar, metrics = train_step_both(batch, epoch)
+            label = "both"
+        return f"[{label}] Scalar: {scalar:.2e}|||{metrics}"
 
     utils.train_loop(
         [batches] * args.epochs,
@@ -680,6 +705,11 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--load_saved", action="store_true")
+    parser.add_argument(
+        "--alternate", action="store_true",
+        help="Alternate training: even epochs update V only, odd epochs update actor only. "
+             "Prevents the two networks from chasing each other.",
+    )
     args = parser.parse_args()
     if args.ckpt_path is None:
         args.ckpt_path = utils.latest_model()
